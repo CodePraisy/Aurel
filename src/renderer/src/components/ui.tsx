@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 
@@ -12,9 +13,10 @@ export function Modal({ open, onClose, title, children, width = 520, footer }: {
     return () => window.removeEventListener('keydown', k)
   }, [open, onClose])
   if (!open) return null
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[3px] animate-fadein" onMouseDown={onClose}>
-      <div className="card shadow-2xl max-h-[88vh] flex flex-col" style={{ width }} onMouseDown={(e) => e.stopPropagation()}>
+  // Rendered at the top of the page: inside a blurred or animated panel, "fixed" would only cover that panel.
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 backdrop-blur-[4px] animate-overlay" onMouseDown={onClose}>
+      <div role="dialog" aria-modal="true" className="card shadow-2xl max-h-[88vh] max-w-[calc(100vw-32px)] flex flex-col animate-pop" style={{ width }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <h2 className="font-display text-[19px] font-medium">{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close"><X size={16} /></button>
@@ -22,7 +24,7 @@ export function Modal({ open, onClose, title, children, width = 520, footer }: {
         <div className="px-5 pb-4 overflow-auto">{children}</div>
         {footer && <div className="px-5 py-3 border-t border-line flex justify-end gap-2">{footer}</div>}
       </div>
-    </div>
+    </div>, document.body
   )
 }
 
@@ -83,7 +85,7 @@ export function Popover({ trigger, children, align = 'left', side = 'bottom', wi
     <div className="relative" ref={ref}>
       {trigger(() => setOpen((o) => !o), open)}
       {open && (
-        <div className={cx('absolute z-40 card shadow-xl p-1.5 animate-fadein', side === 'top' ? 'bottom-full mb-1.5 max-h-[65vh] overflow-y-auto' : 'mt-1.5', align === 'right' ? 'right-0' : 'left-0')} style={{ width }}>
+        <div className={cx('absolute z-40 card shadow-xl p-1.5', side === 'top' ? 'animate-pop-up' : 'animate-pop-down', side === 'top' ? 'bottom-full mb-1.5 max-h-[65vh] overflow-y-auto' : 'mt-1.5', align === 'right' ? 'right-0' : 'left-0')} style={{ width }}>
           {children(() => setOpen(false))}
         </div>
       )}

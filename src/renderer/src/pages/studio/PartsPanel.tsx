@@ -132,7 +132,7 @@ export default function PartsPanel({ project }: { project: Project }) {
   ]
 
   return (
-    <div className="h-full flex flex-col" onContextMenu={(e) => openContextMenu(e, [addMenu])}>
+    <div className="h-full min-h-0 flex flex-col" onContextMenu={(e) => openContextMenu(e, [addMenu])}>
       <div className="px-3 pt-3 pb-2 flex items-center justify-between">
         <span className="label">Instruments</span>
         <Popover align="right" width={210} trigger={(t) => <button className="icon-btn !h-7 !w-7" title="Add instrument" onClick={t}><Plus size={15} /></button>}>
@@ -143,7 +143,7 @@ export default function PartsPanel({ project }: { project: Project }) {
           </>}
         </Popover>
       </div>
-      <div className="flex-1 overflow-auto px-2 pb-3 space-y-1">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 pt-1.5 pb-3 space-y-1 scroll-pt-2">
         {parts.length > 1 && (
           <button onClick={() => selectPart('all')} className={cx('w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px]', view === 'all' ? 'bg-accent/10 text-accent' : 'text-muted hover:bg-fg/[0.05] hover:text-fg')}>
             <Layers size={15} /> Full score
@@ -252,6 +252,7 @@ export default function PartsPanel({ project }: { project: Project }) {
 function PartMenu({ part, onRename, compare, onEditVst, onCustomTuning }: { part: Part; onRename: () => void; compare: boolean; onEditVst: () => void; onCustomTuning: () => void }) {
   const st = useProject()
   const [sub, setSub] = useState<null | 'kind' | 'sound' | 'tuning' | 'pan'>(null)
+  const vstPresets = useApp((state) => state.settings?.vstInstruments) ?? []
   return (
     <Popover align="right" width={250} trigger={(t, open) => <button className={cx('icon-btn !h-6 !w-6', !open && 'opacity-0 group-hover:opacity-100')} onClick={() => { setSub(null); t() }}><MoreHorizontal size={15} /></button>}>
       {(close) => {
@@ -262,7 +263,9 @@ function PartMenu({ part, onRename, compare, onEditVst, onCustomTuning }: { part
             close()
           }}>{INSTRUMENTS[k].label}{k === part.kind ? ' ✓' : ''}</MenuItem>
         ))}</div>
-        if (sub === 'sound') return <div className="max-h-[320px] overflow-auto">{allSounds().map((s) => (
+        if (sub === 'sound') return <div className="max-h-[320px] overflow-auto">{vstPresets.map((preset) => (
+          <MenuItem key={preset.id} hint="VST3" onClick={() => { st.updatePart(part.id, { vstInstrument: preset.configuration }); close() }}>{preset.name}{part.vstInstrument?.plugin.id === preset.configuration.plugin.id ? ' ✓' : ''}</MenuItem>
+        ))}{vstPresets.length > 0 && <div className="h-px bg-line my-1" />}{allSounds().map((s) => (
           <MenuItem key={s.id} onClick={() => { st.updatePart(part.id, { sound: s.id, vstInstrument: undefined }); player.preview({ ...part, sound: s.id, vstInstrument: undefined }, part.kind === 'drums' ? 38 : part.clef === 'bass' ? 43 : 64); close() }} hint={s.custom ? 'yours' : SOUNDS.find((b) => b.id === s.id)?.for.includes(part.kind) ? 'suggested' : ''}>{s.label}{!part.vstInstrument && soundFor(part) === s.id ? ' ✓' : ''}</MenuItem>
         ))}</div>
         if (sub === 'tuning') return (

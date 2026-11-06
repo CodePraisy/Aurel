@@ -5,10 +5,11 @@ import { api } from '@/lib/api'
 import { measureTicks, pitchFromLetter, isFretted, INSTRUMENTS, durInfo } from '@/music/theory'
 import {
   overwrite, cloneMeasure, insertMeasures, deleteMeasures, transposePart, defaultPart, pianoParts, toggleIn,
-  emptyMeasure, measureCount, normalizeMeasure, uid
+  emptyMeasure, measureCount, normalizeMeasure, uid, rippleDelete, moveEvent, findEvent, setMeasureCount
 } from '@/music/score'
 import { pitchAt } from '@/music/tab'
 import { player } from '@/audio/player'
+import { soundLabel, DEFAULT_SOUND, type SoundId } from '@/audio/synth'
 import { useApp } from './app'
 
 export interface Cursor { partId: string; measure: number; tick: number }
@@ -56,7 +57,11 @@ interface EditorState {
   enterPitch(pitch: number, chord?: boolean, pos?: { string: number; fret: number }): void
   enterLetter(letter: string, chord: boolean): void
   enterRest(): void
-  deleteSel(): void
+  deleteSel(mode?: 'rest' | 'shift'): void
+  /** Drag and drop: move (or copy) a note to `measure`/`tick`, `steps` staff positions up or down. */
+  moveNote(partId: string, eventId: string, measure: number, tick: number, steps: number, copy: boolean): void
+  /** Set how many bars the piece has (removing bars from the end). */
+  setBarCount(count: number): void
   transposeSel(semis: number): void
   setFret(fret: number): void
   toggleArt(a: Articulation): void
@@ -95,6 +100,9 @@ function findSel(s: EditorState): { part: Part; mi: number; ei: number; e: NoteE
   }
   return null
 }
+
+/** Undo history and cursor of pieces open in the sidebar, kept while you look at another one. */
+const sessionStash = new Map<string, { past: Score[]; future: Score[]; cursor: Cursor | null; sel: string | null }>()
 
 export const useProject = create<EditorState>((set, get) => {
   let loadRequest = 0
@@ -191,8 +199,14 @@ export const useProject = create<EditorState>((set, get) => {
       await saves
       const p = await api.project.load(id)
       if (request !== loadRequest) return
-      set({ project: p, past: [], future: [], cursor: null, sel: null, noteSelection: null, range: null, saving: false })
+      const kept = sessionStash.get(id)
+      set({ project: p, past: kept?.past ?? [], future: kept?.future ?? [], cursor: null, sel: null, noteSelection: null, range: null, saving: false })
       player.setProject(p)
+      // switching back to a session: same undo history and cursor as you left it
+      if (kept?.cursor && p.score.parts.some((x) => x.id === kept.cursor!.partId) && kept.cursor.measure < measureCount(p.score)) {
+        set({ cursor: kept.cursor, sel: kept.sel })
+        return
+      }
       const first = p.score.parts.find((x) => x.id === p.view?.part) ?? p.score.parts[0]
       if (first) {
         const e = first.measures[0]?.events[0]
@@ -200,6 +214,11 @@ export const useProject = create<EditorState>((set, get) => {
       }
     },
     close: () => {
+      const st = get()
+      if (st.project) {
+        sessionStash.set(st.project.id, { past: st.past, future: st.future, cursor: st.cursor, sel: st.sel })
+        if (sessionStash.size > 12) sessionStash.delete(sessionStash.keys().next().value!)
+      }
       loadRequest++
       if (saveTimer !== null) autoSave()
       player.release()
@@ -224,6 +243,11 @@ export const useProject = create<EditorState>((set, get) => {
     updatePart: (id, patch) => {
       const p = get().project
       if (!p) return
+      const old = p.score.parts.find((x) => x.id === id)
+      if (old && !('name' in patch)) {
+        const name = autoName(old, { ...old, ...patch }, patch)
+        if (name) patch = { ...patch, name }
+      }
       const parts = p.score.parts.map((x) => (x.id === id ? { ...x, ...patch } : x))
       commit({ ...p, score: { ...p.score, parts } }, false)
     },
@@ -396,15 +420,17 @@ export const useProject = create<EditorState>((set, get) => {
       })
       advance(partId, measure, tick, len)
     },
-    deleteSel: () => {
+    deleteSel: (requested) => {
       const st = get()
       if (st.range) { get().removeMeasures(); return }
+      const mode = requested ?? useApp.getState().settings?.deleteMode ?? 'rest'
       if (st.noteSelection) {
         const { partId, ids } = st.noteSelection
         const selected = new Set(ids)
         editScore((sc) => {
           const part = sc.parts.find((p) => p.id === partId)
           if (!part) return
+          if (mode === 'shift') { rippleDelete(part, mt(), selected); return }
           part.measures = part.measures.map((m) => m.events.some((e) => selected.has(e.id))
             ? normalizeMeasure({ events: m.events.filter((e) => !selected.has(e.id)) }, mt()) : m)
         })
@@ -412,7 +438,20 @@ export const useProject = create<EditorState>((set, get) => {
         return
       }
       const s = findSel(st)
-      if (!s || s.e.rest) return
+      if (!s) return
+      if (mode === 'shift') {
+        // pull the following notes back; the cursor stays where the note was
+        const at = s.mi * mt() + s.e.start
+        editScore((sc) => {
+          const p = sc.parts.find((x) => x.id === s.part.id)!
+          rippleDelete(p, mt(), new Set([s.e.id]))
+          const mi = Math.floor(at / mt())
+          const ne = p.measures[mi]?.events.find((e) => e.start <= at - mi * mt() && e.start + e.dur > at - mi * mt())
+          set({ sel: ne?.id ?? null, cursor: { partId: s.part.id, measure: mi, tick: ne?.start ?? 0 } })
+        })
+        return
+      }
+      if (s.e.rest) return
       editScore((sc) => {
         const p = sc.parts.find((x) => x.id === s.part.id)!
         const m = p.measures[s.mi]
@@ -421,6 +460,31 @@ export const useProject = create<EditorState>((set, get) => {
         const ne = p.measures[s.mi].events.find((e) => e.start === s.e.start)
         set({ sel: ne?.id ?? null })
       })
+    },
+    moveNote: (partId, eventId, measure, tick, steps, copy) => {
+      const p = get().project
+      if (!p) return
+      let id: string | null = null
+      editScore((sc) => {
+        const part = sc.parts.find((x) => x.id === partId)
+        if (!part) return
+        id = moveEvent(part, mt(), eventId, measure * mt() + tick, { steps: part.kind === 'drums' ? 0 : steps, keyFifths: sc.keyFifths, copy })
+      })
+      const part = get().project!.score.parts.find((x) => x.id === partId)
+      const found = id && part ? findEvent(part, id) : null
+      if (found && part) {
+        const e = part.measures[found.mi].events[found.ei]
+        set({ cursor: { partId, measure: found.mi, tick: e.start }, sel: e.id, noteSelection: null })
+        if (steps) previewEvent(part, e.notes.map((n) => n.pitch))
+      }
+    },
+    setBarCount: (count) => {
+      const n = Math.max(1, Math.min(2000, Math.round(count)))
+      editScore((sc) => setMeasureCount(sc, n))
+      const c = get().cursor
+      if (c && c.measure >= n) set({ cursor: { ...c, measure: n - 1, tick: 0 }, sel: null })
+      const r = get().range
+      if (r && r.to >= n) set({ range: r.from >= n ? null : { from: r.from, to: n - 1 } })
     },
     transposeSel: (semis) => {
       const st = get()
@@ -676,3 +740,30 @@ function defaultRef(p: Part): number {
 }
 
 export function viewMode(p: Project | null): ViewMode { return p?.view?.mode ?? 'both' }
+
+// ---------- automatic part names ----------
+const vstName = (part: Part): string | null => {
+  const vst = part.vstInstrument
+  if (!vst) return null
+  const presets = useApp.getState().settings?.vstInstruments ?? []
+  return (presets.find((x) => x.configuration === vst) ?? presets.find((x) => x.configuration.plugin.id === vst.plugin.id))?.name ?? vst.plugin.name
+}
+const soundName = (part: Part): string => soundLabel(((part.sound as SoundId) || DEFAULT_SOUND[part.kind]))
+
+/**
+ * When a part changes instrument and still has the name it was given automatically
+ * (its instrument, sound or plug-in), it takes the new instrument's name. A name the
+ * user typed is kept. Piano staves keep their " RH" / " LH" ending.
+ */
+function autoName(old: Part, next: Part, patch: Partial<Part>): string | null {
+  let base: string | null = null
+  if ('vstInstrument' in patch && patch.vstInstrument !== old.vstInstrument) base = vstName(next) ?? ('kind' in patch ? INSTRUMENTS[next.kind].label : soundName(next))
+  else if ('kind' in patch && patch.kind !== old.kind) base = INSTRUMENTS[next.kind].label
+  else if ('sound' in patch && patch.sound !== old.sound) base = soundName(next)
+  if (!base) return null
+  const defaults = new Set([INSTRUMENTS[old.kind].label, soundName(old), ...(old.vstInstrument ? [old.vstInstrument.plugin.name, vstName(old)!] : [])])
+  const m = /^(.*?)( RH| LH| \(copy\)| \d+)?$/.exec(old.name)!
+  if (!defaults.has(m[1])) return null
+  const name = base + (m[2] ?? '')
+  return name === old.name ? null : name
+}

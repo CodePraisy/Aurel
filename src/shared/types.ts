@@ -248,7 +248,15 @@ export interface Settings {
   termsAccepted: boolean
   autoSetup: boolean // download sounds + tools on first run
   setupDone: boolean
+  particles: number // floating notes in the background, 0 = none
+  deleteMode: 'rest' | 'shift' // what Delete does to a note: leave a rest, or pull the following notes back
+  sidebarOpen: boolean // sidebar shows names and sessions, or icons only
+  sessions: SessionTab[] // pieces open in the sidebar, in order
+  sessionFolders: SessionFolder[]
 }
+
+export interface SessionTab { projectId: string; folder?: string }
+export interface SessionFolder { id: string; name: string; collapsed?: boolean }
 
 export interface ExportAudioSettings {
   sampleRate: 44100 | 48000 | 96000

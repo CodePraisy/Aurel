@@ -29,23 +29,33 @@ export function openContextMenu(e: React.MouseEvent | MouseEvent, items: MenuEnt
   useMenu.getState().open(e.clientX, e.clientY, items)
 }
 
+const TITLE_BAR = 42
+const WINDOW_BUTTONS = 150
+
 function MenuList({ items, x, y, onDone, leftOf }: { items: MenuEntry[]; x: number; y: number; onDone: () => void; leftOf?: number }) {
   const ref = useRef<HTMLDivElement>(null)
   const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1
   const [pos, setPos] = useState({ x: x / zoom, y: y / zoom })
   const [sub, setSub] = useState<{ i: number; x: number; y: number; leftOf: number } | null>(null)
+  const [shown, setShown] = useState(false)
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    const r = el.getBoundingClientRect()
+    // Work in screen pixels from the menu's real size, so UI scaling cannot push it off-screen.
+    const width = el.offsetWidth * zoom, height = el.offsetHeight * zoom
+    const W = window.innerWidth, H = window.innerHeight
     let nx = x, ny = y
-    if (nx + r.width > window.innerWidth - 8) nx = leftOf === undefined ? window.innerWidth - r.width - 8 : leftOf - r.width - 4
-    if (ny + r.height > window.innerHeight - 8) ny = Math.max(8, window.innerHeight - r.height - 8)
-    setPos({ x: Math.max(8, nx) / zoom, y: Math.max(8, ny) / zoom })
+    if (nx + width > W - 8) nx = leftOf === undefined ? x - width : leftOf - width - 4
+    if (ny + height > H - 8) ny = Math.max(8, H - height - 8)
+    nx = Math.max(8, Math.min(nx, W - width - 8))
+    // keep clear of the window buttons drawn over the top-right corner on Windows
+    if (ny < TITLE_BAR && nx + width > W - WINDOW_BUTTONS) ny = TITLE_BAR
+    setPos({ x: nx / zoom, y: ny / zoom })
+    setShown(true)
   }, [x, y, leftOf, zoom])
   return (
     <>
-      <div ref={ref} data-context-menu className="fixed z-[140] min-w-[210px] max-w-[300px] card shadow-2xl p-1.5 overflow-auto" style={{ left: pos.x, top: pos.y, maxHeight: (window.innerHeight - 16) / zoom }} onContextMenu={(e) => e.preventDefault()}>
+      <div ref={ref} data-context-menu role="menu" className={cx('fixed z-[140] min-w-[210px] max-w-[300px] card shadow-2xl p-1.5 overflow-auto', shown ? 'animate-pop-menu' : 'invisible')} style={{ left: pos.x, top: pos.y, maxHeight: (window.innerHeight - 16) / zoom }} onContextMenu={(e) => e.preventDefault()}>
         {items.map((it, i) => it.separator ? <div key={i} className="h-px bg-line my-1" /> : (
           <button key={i} disabled={it.disabled}
             className={cx('w-full flex items-center gap-2.5 px-2.5 h-8 rounded-md text-[13px] text-left disabled:opacity-40', it.danger ? 'text-bad hover:bg-bad/10' : 'text-fg hover:bg-fg/[0.07]', sub?.i === i && 'bg-fg/[0.07]')}

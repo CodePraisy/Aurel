@@ -4,6 +4,7 @@ import { noteFromName, type CustomSound } from '@shared/sounds'
 import { api } from '@/lib/api'
 import { useApp } from '@/store/app'
 import { player } from '@/audio/player'
+import { VST_SWAP } from '@/audio/custom'
 import { SOUNDS, type SoundId } from '@/audio/synth'
 import { openContextMenu, Select } from '@/components/menu'
 import { INSTRUMENTS, midiName } from '@/music/theory'
@@ -128,8 +129,16 @@ export default function CustomSounds() {
             <div className="font-medium truncate" title="Double-click to open plug-in editor" onDoubleClick={() => void editNative(preset)}>{preset.name}</div>
             <div className="text-[12px] text-muted">{INSTRUMENTS[preset.kind].label} · {preset.configuration.plugin.name}</div>
           </div>
+          <Select width={190} title="Built-in sound to replace" value={Object.entries(settings?.soundSwaps ?? {}).find(([, c]) => c === VST_SWAP + preset.id)?.[0] ?? ''}
+            onChange={(builtin: string) => {
+              const swaps = useApp.getState().settings?.soundSwaps ?? {}
+              const next = Object.fromEntries(Object.entries(swaps).filter(([b, c]) => c !== VST_SWAP + preset.id && b !== builtin))
+              if (builtin) next[builtin] = VST_SWAP + preset.id
+              void updateSettings({ soundSwaps: next })
+            }}
+            options={[{ value: '', label: 'Per part only' }, ...SOUNDS.filter((s) => s.id !== 'sine').map((s) => ({ value: s.id, label: `Instead of ${s.label}` }))]} />
           <button className="btn-soft" onClick={() => setEditingVst(preset)}>Edit</button>
-          <button className="icon-btn" aria-label={`Remove ${preset.name}`} onClick={() => void updateSettings({ vstInstruments: vst.filter((item) => item.id !== preset.id) })}><Trash2 size={14} /></button>
+          <button className="icon-btn" aria-label={`Remove ${preset.name}`} onClick={() => void updateSettings({ vstInstruments: vst.filter((item) => item.id !== preset.id), soundSwaps: Object.fromEntries(Object.entries(settings?.soundSwaps ?? {}).filter(([, c]) => c !== VST_SWAP + preset.id)) })}><Trash2 size={14} /></button>
         </div>)}
         {!list.length && !vst.length && <p className="text-faint text-[12.5px] text-center border border-dashed border-line rounded-xl p-5">No instruments of your own yet.</p>}
       </div>

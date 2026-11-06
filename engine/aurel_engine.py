@@ -142,6 +142,49 @@ def separate(mix, model_name: str, device: str, p0: float, p1: float):
     return {name: out[i].cpu().numpy().astype(np.float32) for i, name in enumerate(model.sources)}
 
 
+def isolate_vocals(vocals, rest):
+    """Keep only the singer(s) in the vocal stem.
+
+    Separation leaves some of the band in the vocal stem (cymbals, guitar, reverb). Each
+    time-frequency cell keeps the share of energy the vocals have against everything else,
+    the rumble below the voice is cut, and passages where nobody sings are gated to silence.
+    Input and output are (2, n) float arrays at SR.
+    """
+    import numpy as np
+    from scipy.signal import stft, istft
+    from scipy.ndimage import maximum_filter1d, median_filter, uniform_filter1d
+
+    n = vocals.shape[1]
+    nfft, hop = 4096, 1024
+    _, _, V = stft(vocals, fs=SR, nperseg=nfft, noverlap=nfft - hop, boundary="zeros")
+    _, _, R = stft(rest, fs=SR, nperseg=nfft, noverlap=nfft - hop, boundary="zeros")
+    pv = np.abs(V) ** 2
+    pr = np.abs(R) ** 2
+    # soft mask from both channels, a little sharper than Wiener, smoothed so it does not "chirp"
+    mask = (pv.sum(0) / (pv.sum(0) + pr.sum(0) + 1e-10)) ** 1.4
+    mask = median_filter(mask, size=(1, 5))
+    freqs = np.fft.rfftfreq(nfft, 1 / SR)
+    mask *= np.clip((freqs[:, None] - 60) / 40, 0, 1)  # high-pass: nothing below ~80 Hz is voice
+    V = V * mask[None]
+
+    # gate: frames with no singing (quiet, or far below the band) go silent, with soft edges
+    band = (freqs > 150) & (freqs < 5000)
+    voice = (np.abs(V[:, band]) ** 2).sum((0, 1))
+    other = pr[:, band].sum((0, 1))
+    level = 10 * np.log10(voice + 1e-12)
+    loud = level > (np.percentile(level, 99) - 42)
+    present = 10 * np.log10((voice + 1e-12) / (other + 1e-12)) > -16
+    gate = (loud & present).astype(np.float32)
+    gate = maximum_filter1d(gate, size=9)  # hold ~0.2 s so word endings and breaths are kept
+    gate = uniform_filter1d(gate, size=5)  # soft edges
+    V = V * gate[None, None, :]
+    _, out = istft(V, fs=SR, nperseg=nfft, noverlap=nfft - hop, boundary=True)
+    out = out[:, :n]
+    if out.shape[1] < n:
+        out = np.pad(out, ((0, 0), (0, n - out.shape[1])))
+    return out.astype(np.float32)
+
+
 def load_stems_dir(d: str):
     stems = {}
     for f in sorted(os.listdir(d)):
@@ -367,6 +410,13 @@ def cmd_process(a) -> None:
     jobs = []  # (stem name, file, family, audio)
     for name in names:
         audio = stems[name]
+        if name == "vocals" and len(stems) > 1:
+            progress("Isolating vocals", 0.615, "removing the band from the voice")
+            try:
+                rest = sum(stems[k] for k in stems if k != "vocals")
+                audio = isolate_vocals(audio, rest)
+            except Exception as e:  # keep the plain separated stem rather than fail the job
+                log("Vocal clean-up skipped:", e)
         if name == "guitar":
             c = stereo_split(audio)
             if c is not None:

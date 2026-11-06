@@ -3,13 +3,14 @@ import { PPQ } from '@shared/types'
 import { useProject } from '@/store/project'
 import { player } from '@/audio/player'
 import { isFretted } from '@/music/theory'
+import { useApp } from '@/store/app'
 
 export const CHORD_SHORTCUT = 'Alt+C'
 
 export const SHORTCUTS: { group: string; items: [string, string][] }[] = [
   { group: 'Playback', items: [['Space', 'Play / pause'], ['Home', 'Back to start (or loop start)'], ['L', 'Loop selected measures'], ['M', 'Metronome'], ['[ ]', 'Speed −/+ 5%']] },
   { group: 'Note entry', items: [['A … G', 'Enter note at cursor'], [CHORD_SHORTCUT, 'Toggle Chord mode'], ['Shift A … G', 'Add note to chord'], ['0', 'Enter rest'], ['3 4 5 6 7', '16th, 8th, quarter, half, whole'], ['2', '32nd'], ['.', 'Toggle dot'], ['T', 'Toggle tie'], ['0 … 24 (tab)', 'Fret on the selected string'], ['Alt ↑ ↓ (tab)', 'Choose string']] },
-  { group: 'Editing', items: [['Ctrl / Cmd S', 'Save project'], ['Shift+click a note', 'Select a range of notes on the staff'], ['Ctrl+click a note', 'Add or remove a note from the selection'], ['↑ ↓', 'Pitch up / down a semitone'], ['Ctrl ↑ ↓', 'Octave up / down'], ['← →', 'Previous / next note'], ['Ctrl ← →', 'Previous / next measure'], ['Shift ← →', 'Extend measure selection'], ['Delete', 'Delete selected notes or measures'], ['Ctrl C / V', 'Copy / paste notes or measures'], ['Ctrl D', 'Duplicate measures'], ['Ctrl Z / Y', 'Undo / redo'], ['Ctrl Enter', 'Insert measure after']] },
+  { group: 'Editing', items: [['Ctrl / Cmd S', 'Save project'], ['Shift+click a note', 'Select a range of notes on the staff'], ['Ctrl+click a note', 'Add or remove a note from the selection'], ['↑ ↓', 'Pitch up / down a semitone'], ['Ctrl ↑ ↓', 'Octave up / down'], ['← →', 'Previous / next note'], ['Ctrl ← →', 'Previous / next measure'], ['Shift ← →', 'Extend measure selection'], ['Delete', 'Delete selected notes or measures (Settings → Editor picks rest or shift back)'], ['Shift Delete', 'Delete the other way: shift back or leave a rest'], ['Drag a note', 'Move it (up/down changes pitch); Ctrl+drag copies'], ['Ctrl C / V', 'Copy / paste notes or measures'], ['Ctrl D', 'Duplicate measures'], ['Ctrl Z / Y', 'Undo / redo'], ['Ctrl Enter', 'Insert measure after']] },
   { group: 'View', items: [['Ctrl + / −', 'Zoom'], ['Ctrl 1 2 3', 'Sheet, tab, both']] }
 ]
 
@@ -72,7 +73,13 @@ export function useStudioKeys(enabled: boolean, onToggleLoop: () => void): void 
         st.transposeSel(dir * (ctrl ? 12 : 1))
         return
       }
-      if (k === 'Delete' || k === 'Backspace') { handled(); st.deleteSel(); return }
+      if (k === 'Delete' || k === 'Backspace') {
+        handled()
+        // Shift+Delete does the other kind of delete (rest ↔ shift back)
+        const mode = useApp.getState().settings?.deleteMode ?? 'rest'
+        st.deleteSel(e.shiftKey ? (mode === 'rest' ? 'shift' : 'rest') : mode)
+        return
+      }
       if (k === 'Escape') { st.setRange(null); st.clearNoteSelection(); return }
       if (e.altKey && !ctrl && !e.shiftKey && e.code === 'KeyC') {
         handled()

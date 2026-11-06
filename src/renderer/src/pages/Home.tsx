@@ -49,7 +49,7 @@ export default function Home() {
 
         <section className="grid grid-cols-3 gap-4">
           {cards.map((c, i) => (
-            <button key={c.title} onClick={c.action} className="group card home-feature text-left p-6 hover:border-accent/50 hover:-translate-y-0.5 transition-all duration-200 animate-fadein relative overflow-hidden" style={{ animationDelay: `${i * 60}ms` }}>
+            <button key={c.title} onClick={c.action} className="group card home-feature text-left p-6 hover:border-accent/50 hover:-translate-y-1 hover:shadow-[0_18px_40px_-22px_rgb(var(--accent)/.55)] transition-all duration-300 animate-fadein relative overflow-hidden" style={{ animationDelay: `${i * 60}ms` }}>
               <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-accent/[0.06] group-hover:bg-accent/[0.12] transition-colors" />
               <div className="h-11 w-11 rounded-xl bg-accent/12 bg-accent/10 text-accent flex items-center justify-center mb-5"><c.icon size={21} strokeWidth={1.7} /></div>
               <div className="font-display text-[21px] mb-1.5">{c.title}</div>
@@ -82,9 +82,9 @@ export default function Home() {
           {recent.length === 0 ? (
             <div className="card border-dashed px-6 py-10 text-center text-muted">Your songs and compositions will show up here.</div>
           ) : (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 stagger">
               {recent.map((e) => (
-                <button key={e.id} onContextMenu={(ev) => openContextMenu(ev, itemMenu(e, actions))} onClick={() => go({ name: 'studio', projectId: e.id })} className="card p-3 flex items-center gap-3 text-left hover:bg-raised/60 transition-colors">
+                <button key={e.id} onContextMenu={(ev) => openContextMenu(ev, itemMenu(e, actions))} onClick={() => go({ name: 'studio', projectId: e.id })} className="card lift p-3 flex items-center gap-3 text-left hover:bg-raised/60">
                   <Artwork id={e.id} artwork={e.artwork} title={e.title} size={48} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{e.title}</div>

@@ -111,7 +111,12 @@ export const DEFAULT_SETTINGS: Settings = {
   uiScale: 1,
   termsAccepted: false,
   autoSetup: true,
-  setupDone: false
+  setupDone: false,
+  particles: 36,
+  deleteMode: 'rest',
+  sidebarOpen: true,
+  sessions: [],
+  sessionFolders: []
 }
 
 let settingsCache: Settings | null = null

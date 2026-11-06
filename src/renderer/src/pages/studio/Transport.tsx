@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Play, Pause, Square, Repeat, Timer, Gauge, Music4, TrendingUp, BookmarkPlus, Trash2, SkipBack, ListMusic, ArrowUpDown, Loader2 } from 'lucide-react'
+import { Play, Pause, Square, Repeat, Timer, Gauge, Music4, TrendingUp, BookmarkPlus, Trash2, SkipBack, ArrowUpDown, Loader2, ChevronDown, AlertTriangle } from 'lucide-react'
 import type { Listen, Project } from '@shared/types'
 import { player } from '@/audio/player'
 import { useProject } from '@/store/project'
 import { useApp } from '@/store/app'
-import { cx, Slider, Popover, MenuItem, Toggle, fmtTime } from '@/components/ui'
+import { cx, Slider, Popover, Toggle, fmtTime, Modal } from '@/components/ui'
 import { beatTicks, measureTicks } from '@/music/theory'
 import { tempoMap } from '@/music/score'
 import { uid } from '@/music/score'
@@ -81,12 +81,8 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
     player.setOptions({ speed: v })
     st.patchProject((pp) => { pp.practice.speed = v })
   }
-  const saveLoop = () => {
-    if (!o.loop) return
-    const l = o.loop
-    st.patchProject((pp) => { pp.practice.loops.push({ id: uid('l'), name: `Bars ${l.from + 1}–${l.to + 1}`, from: l.from, to: l.to }) })
-  }
   const total = player.endTick
+  const bars = project.score.parts[0]?.measures.length ?? Math.ceil(total / mt)
 
   return (
     <div className="shrink-0 border-t border-line bg-panel/70 backdrop-blur">
@@ -114,6 +110,8 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
         <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] group-hover:h-[5px] transition-all bg-fg/[0.08] rounded-full overflow-hidden">
           <div ref={barRef} className="h-full bg-accent rounded-full" />
         </div>
+        {o.loop && bars > 0 && <div className={cx('absolute top-1/2 -translate-y-1/2 h-[7px] rounded-full pointer-events-none transition-opacity', o.loopOn ? 'bg-accent2/35 ring-1 ring-accent2/70' : 'bg-fg/10')}
+          style={{ left: `${(o.loop.from / bars) * 100}%`, width: `${((o.loop.to - o.loop.from + 1) / bars) * 100}%` }} />}
         <div ref={knobRef} className="absolute top-1/2 h-3.5 w-3.5 -mt-[7px] -ml-[7px] rounded-full bg-accent shadow-[0_0_10px_rgb(var(--accent)/.6)] scale-0 group-hover:scale-100 transition-transform" />
       </div>
       <div className="min-h-[58px] flex flex-wrap items-center px-4 py-1 gap-2">
@@ -139,21 +137,7 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
         </div>
 
         <div className="w-px h-6 bg-line mx-2" />
-        <button className={cx('icon-btn', o.loopOn && 'on')} aria-label="Loop selection" aria-pressed={o.loopOn} title="Loop selection (L)" onClick={toggleLoop}><Repeat size={16} /></button>
-        <Popover width={250} side="top" trigger={(t, open) => <button className={cx('icon-btn', open && 'on')} aria-label="Saved loops" aria-expanded={open} title={o.loop ? `Saved loops · Bars ${o.loop.from + 1}–${o.loop.to + 1}` : 'Saved loops'} onClick={t}><ListMusic size={16} /></button>}>
-          {(close) => (
-            <>
-              <div className="px-2.5 py-1.5 text-[11.5px] text-faint">Select measures (Shift+click) then press L.</div>
-              {project.practice.loops.map((l) => (
-                <div key={l.id} className="flex items-center">
-                  <MenuItem onClick={() => { player.setOptions({ loop: { from: l.from, to: l.to }, loopOn: true }); st.setRange({ from: l.from, to: l.to }); close() }}>{l.name}</MenuItem>
-                  <button className="icon-btn !h-7 !w-7" onClick={() => st.patchProject((pp) => { pp.practice.loops = pp.practice.loops.filter((x) => x.id !== l.id) })}><Trash2 size={13} /></button>
-                </div>
-              ))}
-              <MenuItem icon={<BookmarkPlus size={14} />} onClick={() => { saveLoop(); close() }}>{o.loop ? 'Save current loop' : 'No loop set'}</MenuItem>
-            </>
-          )}
-        </Popover>
+        <LoopControl project={project} bars={bars} />
         <Popover width={260} side="top" align="right" trigger={(t) => <button className={cx('icon-btn', o.trainer.on && 'on')} title="Speed trainer" onClick={t}><TrendingUp size={16} /></button>}>
           {() => (
             <div className="p-2.5 space-y-3">
@@ -177,8 +161,125 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
         {o.compare && <span className="chip !text-accent2 ml-1">Comparing: audio L / MIDI R</span>}
         {p.dropouts > 0 && <button className="chip !text-warn ml-1" title="The plug-ins could not keep up and the sound dropped out. Try a larger buffer size in Settings → Audio device. Click to dismiss." onClick={() => { player.dropouts = 0; player.setOptions({}) }}>Audio dropouts: {p.dropouts}</button>}
         <div className="flex-1" />
-        <span className="text-[11px] text-faint tabular-nums">{Math.ceil(total / mt)} bars</span>
+        <BarCount project={project} />
       </div>
     </div>
+  )
+}
+
+/** Loop on/off, with quick choices (whole piece, the selected bars, this bar), typed bar numbers and saved sections. */
+function LoopControl({ project, bars }: { project: Project; bars: number }) {
+  const o = player.opts
+  const st = useProject()
+  const loop = o.loop
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [name, setName] = useState('')
+  useEffect(() => { setFrom(loop ? String(loop.from + 1) : ''); setTo(loop ? String(loop.to + 1) : '') }, [loop?.from, loop?.to])
+  const last = Math.max(0, bars - 1)
+  const setLoop = (a: number, b: number) => {
+    const lo = Math.max(0, Math.min(a, b, last)), hi = Math.min(last, Math.max(a, b))
+    player.setOptions({ loop: { from: lo, to: hi }, loopOn: true })
+    st.setRange({ from: lo, to: hi })
+  }
+  const bar = st.cursor?.measure ?? 0
+  const whole = !!loop && loop.from === 0 && loop.to === last
+  const label = !loop ? 'Loop' : whole ? 'Whole piece' : loop.from === loop.to ? `Bar ${loop.from + 1}` : `Bars ${loop.from + 1}–${loop.to + 1}`
+  const saved = project.practice.loops
+  const save = () => {
+    if (!loop) return
+    const n = name.trim() || `Bars ${loop.from + 1}–${loop.to + 1}`
+    st.patchProject((pp) => { pp.practice.loops.push({ id: uid('l'), name: n, from: loop.from, to: loop.to }) })
+    setName('')
+  }
+  const applyTyped = () => {
+    const a = parseInt(from, 10), b = parseInt(to, 10)
+    if (Number.isFinite(a) && Number.isFinite(b)) setLoop(a - 1, b - 1)
+  }
+  return (
+    <div className="flex items-center">
+      <button className={cx('icon-btn !rounded-r-none', o.loopOn && 'on')} aria-label="Loop" aria-pressed={o.loopOn} title={o.loopOn ? `Looping ${label} (L to stop)` : 'Loop (L)'}
+        onClick={() => { if (o.loopOn) player.setOptions({ loopOn: false }); else if (loop && !st.range) player.setOptions({ loopOn: true }); else toggleLoop() }}><Repeat size={16} /></button>
+      <Popover width={290} side="top" trigger={(t, open) => (
+        <button className={cx('h-8 pl-1 pr-1.5 rounded-r-lg text-[12px] flex items-center gap-1 max-w-[130px] transition-colors', o.loopOn ? 'text-accent bg-accent/10' : 'text-muted hover:text-fg hover:bg-fg/[0.07]', open && 'bg-fg/[0.07]')}
+          aria-label="Choose what to loop" aria-expanded={open} onClick={t}><span className="truncate">{label}</span><ChevronDown size={12} className="shrink-0" /></button>
+      )}>
+        {(close) => (
+          <div className="p-1.5 space-y-2.5">
+            <div className="flex items-center justify-between"><span className="label">Loop</span><Toggle ariaLabel="Loop on" on={o.loopOn} onChange={(v) => { if (v && !loop) setLoop(0, last); else player.setOptions({ loopOn: v }) }} /></div>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button className={cx('btn-soft !h-8 !px-1 !text-[12px]', whole && o.loopOn && '!bg-accent/15 !text-accent')} onClick={() => setLoop(0, last)}>Whole piece</button>
+              <button className="btn-soft !h-8 !px-1 !text-[12px]" disabled={!st.range} title={st.range ? '' : 'Shift+click bars in the score to select them'} onClick={() => st.range && setLoop(st.range.from, st.range.to)}>Selection</button>
+              <button className="btn-soft !h-8 !px-1 !text-[12px]" onClick={() => setLoop(bar, bar)}>Bar {bar + 1}</button>
+            </div>
+            <form className="flex items-center gap-1.5 text-[12.5px]" onSubmit={(e) => { e.preventDefault(); applyTyped() }}>
+              <span className="text-muted">Bars</span>
+              <input className="field !h-8 !w-14 text-center tabular-nums" aria-label="Loop from bar" inputMode="numeric" value={from} placeholder="1" onChange={(e) => setFrom(e.target.value.replace(/\D/g, ''))} />
+              <span className="text-muted">to</span>
+              <input className="field !h-8 !w-14 text-center tabular-nums" aria-label="Loop to bar" inputMode="numeric" value={to} placeholder={String(bars)} onChange={(e) => setTo(e.target.value.replace(/\D/g, ''))} />
+              <button className="btn-soft !h-8 !px-2.5 ml-auto" title={`Loop these bars (piece has ${bars})`}>Set</button>
+            </form>
+            <div>
+              <div className="label mb-1">Sections</div>
+              {!saved.length && <p className="text-[11.5px] text-faint mb-1.5">Save loops you practise often, like “Chorus” or “Solo”.</p>}
+              <div className="max-h-40 overflow-y-auto space-y-0.5">
+                {saved.map((l) => {
+                  const on = o.loopOn && loop?.from === l.from && loop?.to === l.to
+                  return (
+                    <div key={l.id} className={cx('group flex items-center rounded-md', on && 'bg-accent/10')}>
+                      <button className={cx('flex-1 min-w-0 text-left px-2 h-8 text-[13px] truncate rounded-md hover:bg-fg/[0.06]', on && 'text-accent')} onClick={() => { setLoop(l.from, l.to); close() }}>
+                        {l.name} <span className="text-faint text-[11px]">· {l.from === l.to ? `bar ${l.from + 1}` : `${l.from + 1}–${l.to + 1}`}</span>
+                      </button>
+                      <button className="icon-btn !h-7 !w-7 opacity-0 group-hover:opacity-100" aria-label={`Delete ${l.name}`} onClick={() => st.patchProject((pp) => { pp.practice.loops = pp.practice.loops.filter((x) => x.id !== l.id) })}><Trash2 size={13} /></button>
+                    </div>
+                  )
+                })}
+              </div>
+              <form className="flex gap-1.5 mt-1.5" onSubmit={(e) => { e.preventDefault(); save() }}>
+                <input className="field !h-8 !text-[12.5px]" placeholder={loop ? 'Name this section…' : 'Set a loop first'} disabled={!loop} value={name} onChange={(e) => setName(e.target.value)} />
+                <button className="btn-soft !h-8 shrink-0" disabled={!loop} title="Save section"><BookmarkPlus size={14} /></button>
+              </form>
+            </div>
+          </div>
+        )}
+      </Popover>
+    </div>
+  )
+}
+
+/** The piece's length in bars; type a number to change it. Removing bars that hold notes asks first. */
+function BarCount({ project }: { project: Project }) {
+  const st = useProject()
+  const bars = project.score.parts[0]?.measures.length ?? 0
+  const [value, setValue] = useState(String(bars))
+  const [confirm, setConfirm] = useState<{ to: number; filled: number } | null>(null)
+  useEffect(() => setValue(String(bars)), [bars])
+  const apply = () => {
+    const n = parseInt(value, 10)
+    if (!Number.isFinite(n) || n < 1 || n === bars) { setValue(String(bars)); return }
+    if (n < bars) {
+      const filled = new Set<number>()
+      for (const part of project.score.parts) part.measures.forEach((m, i) => { if (i >= n && m.events.some((e) => !e.rest)) filled.add(i) })
+      if (filled.size) { setConfirm({ to: n, filled: filled.size }); return }
+    }
+    st.setBarCount(Math.min(2000, n))
+  }
+  return (
+    <label className="flex items-center gap-1 text-[11px] text-faint tabular-nums" title="Number of bars. Type a new number to add or remove bars at the end.">
+      <input className="w-11 h-6 rounded-md bg-transparent border border-transparent hover:border-line focus:border-accent/60 focus:bg-fg/[0.05] text-right px-1 text-[12px] text-muted outline-none transition-colors"
+        aria-label="Number of bars" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value.replace(/\D/g, ''))}
+        onFocus={(e) => e.currentTarget.select()} onBlur={apply}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setValue(String(bars)); e.currentTarget.blur() } }} />
+      bars
+      {confirm && <Modal open title="Remove bars?" width={400} onClose={() => { setConfirm(null); setValue(String(bars)) }} footer={<>
+        <button className="btn-ghost" onClick={() => { setConfirm(null); setValue(String(bars)) }}>Keep {bars} bars</button>
+        <button className="btn bg-bad text-white hover:brightness-110" onClick={() => { st.setBarCount(confirm.to); setConfirm(null) }}>Remove {bars - confirm.to} bar{bars - confirm.to === 1 ? '' : 's'}</button>
+      </>}>
+        <div className="flex gap-3 text-[13px] leading-relaxed">
+          <AlertTriangle size={20} className="text-warn shrink-0 mt-0.5" />
+          <p>Going from {bars} to {confirm.to} bars deletes bars {confirm.to + 1}–{bars}. {confirm.filled === 1 ? 'One of them has' : `${confirm.filled} of them have`} notes in them, which will be deleted too. You can undo this with Ctrl+Z.</p>
+        </div>
+      </Modal>}
+    </label>
   )
 }

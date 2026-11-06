@@ -1,5 +1,5 @@
 import { recordingRate } from '@shared/rhythm'
-import type { Listen, Part, Project } from '@shared/types'
+import type { Listen, Part, Project, VstInstrumentPreset } from '@shared/types'
 import { PPQ } from '@shared/types'
 import { flattenPart, tempoMap, scoreEndTick, type PlayNote, type TempoMap } from '@/music/score'
 import { beatTicks, measureTicks } from '@/music/theory'
@@ -9,7 +9,7 @@ import { buildChain } from './fx'
 import { packReady, onPacksChanged, loadPack, resetMissing } from './samples'
 import { customId, newFx, orderChain, type CustomSound, type FxSlot, type StemStream, type VstEvent, type VstFailure, type VstFxSlot, type VstSlotSpec } from '@shared/sounds'
 import { NativeTrack } from './native'
-import { customSound, setCustomSounds, swapFor } from './custom'
+import { customSound, setCustomSounds, swapFor, vstSwapFor } from './custom'
 
 /** Effects used when a part has never had its chain edited. */
 export function defaultFx(sound: SoundId): FxSlot[] {
@@ -53,17 +53,25 @@ export const soundFor = (p: Part): SoundId => {
  */
 export type Route = 'synth' | 'stem' | 'vsti' | 'stemfx' | 'capture'
 
+/** The part's VST3 instrument: its own, or one chosen in Settings to replace its built-in sound everywhere. */
+export function vstFor(part: Part): Part['vstInstrument'] {
+  if (part.vstInstrument) return part.vstInstrument
+  const chosen = part.sound || DEFAULT_SOUND[part.kind]
+  return customId(chosen) ? undefined : vstSwapFor(chosen) ?? undefined
+}
+
 export function routeFor(part: Part, hasAudio: boolean): Route {
   const plugins = fxFor(part).some((slot) => slot.type === 'vst3')
   if (part.stem && part.playback === 'audio' && hasAudio) return plugins ? 'stemfx' : 'stem'
-  if (part.vstInstrument) return 'vsti'
+  if (vstFor(part)) return 'vsti'
   return plugins ? 'capture' : 'synth'
 }
 
 /** The part's plug-ins in processing order: its VST3 instrument, then its VST3 effects. */
 export function pluginSlots(part: Part, route: Route): VstSlotSpec[] {
   const slots: VstSlotSpec[] = []
-  if (route === 'vsti' && part.vstInstrument) slots.push({ id: 'instrument', on: true, config: part.vstInstrument })
+  const instrument = vstFor(part)
+  if (route === 'vsti' && instrument) slots.push({ id: 'instrument', on: true, config: instrument })
   for (const slot of orderChain(fxFor(part))) {
     if (slot.type !== 'vst3') continue
     const fx = slot as VstFxSlot
@@ -169,8 +177,8 @@ class Player {
   private effectTails = true
 
   /** Apply audio device settings; recreates the audio context if the format changed. */
-  configure(o: { sampleRate?: number; bufferSize?: number; sinkId?: string; volume?: number; fxDefaults?: Record<string, FxSlot[]>; effectTails?: boolean; customSounds?: CustomSound[]; soundSwaps?: Record<string, string> }): void {
-    if (o.customSounds && setCustomSounds(o.customSounds, o.soundSwaps ?? {}) && this.project) {
+  configure(o: { sampleRate?: number; bufferSize?: number; sinkId?: string; volume?: number; fxDefaults?: Record<string, FxSlot[]>; effectTails?: boolean; customSounds?: CustomSound[]; soundSwaps?: Record<string, string>; vstInstruments?: VstInstrumentPreset[] }): void {
+    if (o.customSounds && setCustomSounds(o.customSounds, o.soundSwaps ?? {}, o.vstInstruments ?? []) && this.project) {
       this.setProject(this.project) // instruments may sound different now
       this.emit()
     }
@@ -589,6 +597,30 @@ class Player {
     }
     return this.tm.secToTick(this.tm.tickToSec(this.segTick0) + (now - this.segCtx0))
   }
+  /**
+   * The position you are hearing right now, moving smoothly every frame. The audio clock itself
+   * only advances once per audio buffer (and runs ahead of the speakers), so the score cursor
+   * uses the output timestamp, carried forward with the display clock.
+   */
+  getVisualTick(): number {
+    if (this.state !== 'playing' || !this.ctx) return this.pausedTick
+    const ctx = this.ctx
+    const stamp = ctx.getOutputTimestamp?.()
+    let now = ctx.currentTime
+    if (stamp?.contextTime !== undefined && stamp.performanceTime !== undefined && stamp.performanceTime > 0) {
+      now = stamp.contextTime + (performance.now() - stamp.performanceTime) / 1000
+      // never run ahead of the scheduler's clock or jump backwards
+      now = Math.min(now, ctx.currentTime + 0.05)
+      if (now < this.lastVisual && this.lastVisual - now < 0.1) now = this.lastVisual
+    }
+    this.lastVisual = now
+    if (now < this.segCtx0) {
+      const previous = this.beforeWrap
+      return previous ? previous.map.secToTick(previous.map.tickToSec(previous.tick) + now - previous.time) : this.segTick0
+    }
+    return this.tm.secToTick(this.tm.tickToSec(this.segTick0) + (now - this.segCtx0))
+  }
+  private lastVisual = 0
   get playheadStarted(): boolean {
     return this.state === 'playing' && !!this.ctx && (this.beforeWrap !== null || this.ctx.currentTime >= this.segCtx0)
   }
@@ -895,13 +927,33 @@ class Player {
     const track = part ? this.native.get(part.id) : undefined
     const p = Math.max(0, Math.min(127, pitch))
     if (part && route === 'vsti') {
-      // ahead of the host's render position so the note keeps its exact length
       if (!track) return { stop: () => undefined }
-      const ahead = this.lookahead + track.latency + 256
-      const start = Math.round(ctx.currentTime * sr) + ahead
-      track.noteOn(start, p, velocity)
-      let stopped = false
-      return { stop: () => { if (stopped) return; stopped = true; track.noteOff(Math.max(start + 1, Math.round(ctx.currentTime * sr) + ahead), p) } }
+      // ahead of the host's render position so the note keeps its exact length
+      const ahead = () => this.lookahead + track.latency + Math.max(256, Math.round(ctx.baseLatency * sr))
+      const frameNow = () => Math.round(ctx.currentTime * sr)
+      if (track.live) {
+        const start = frameNow() + ahead()
+        track.noteOn(start, p, velocity)
+        let stopped = false
+        return { stop: () => { if (stopped) return; stopped = true; track.noteOff(Math.max(start + 1, frameNow() + ahead()), p) } }
+      }
+      // The plug-in is still loading (just opened, or the first note of the session): play the note
+      // as soon as it is ready, with the length the key was held, instead of losing it.
+      const asked = performance.now()
+      let held: number | null = null
+      let started: number | null = null
+      void track.whenLive().then((ok) => {
+        if (!ok || performance.now() - asked > 4000) return
+        const start = frameNow() + ahead()
+        started = start
+        track.noteOn(start, p, velocity)
+        if (held !== null) track.noteOff(start + Math.round(Math.min(2, held) * sr), p)
+      })
+      return { stop: () => {
+        if (held !== null) return
+        held = (performance.now() - asked) / 1000
+        if (started !== null) track.noteOff(Math.max(started + 1, frameNow() + ahead()), p)
+      } }
     }
     const sound = part ? soundFor(part) : 'piano'
     // the part's own sound and effects; a muted part still sounds (dry) when you play it directly

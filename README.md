@@ -4,14 +4,14 @@
 
 Aurel separates a recording into instrument stems (vocals, drums, bass, guitar, piano, other) and transcribes each stem into standard notation and guitar tablature. It also gives you a synchronized practice player, a full score editor, and real-time hosting for VST3 instruments and effects on Windows. Projects, audio and AI processing all stay on your machine.
 
-## Download — v0.3.0
+## Download — v0.4.0
 
-- [`Aurel-0.3.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.3.0/Aurel-0.3.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
-- [`Aurel-0.3.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.3.0/Aurel-0.3.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
-- [`Aurel-0.3.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.3.0/Aurel-0.3.0-macOS-arm64.zip) (Mac with Apple silicon)
-- [`Aurel-0.3.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.3.0/Aurel-0.3.0-macOS-x64.zip) (Mac with an Intel processor)
+- [`Aurel-0.4.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.0/Aurel-0.4.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
+- [`Aurel-0.4.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.0/Aurel-0.4.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
+- [`Aurel-0.4.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.0/Aurel-0.4.0-macOS-arm64.zip) (Mac with Apple silicon)
+- [`Aurel-0.4.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.0/Aurel-0.4.0-macOS-x64.zip) (Mac with an Intel processor)
 
-[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.3.0)
+[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.4.0)
 
 To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: Apple M…** means Apple silicon. **Processor: Intel** means Intel.
 
@@ -25,14 +25,14 @@ To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: A
 
 ### Windows (installer)
 
-1. Download `Aurel-0.3.0-Windows-x64.exe` and run it.
+1. Download `Aurel-0.4.0-Windows-x64.exe` and run it.
 2. If Microsoft Defender SmartScreen shows **"Windows protected your PC"**, select **More info → Run anyway**. The warning appears because the build is not yet code-signed.
 3. Complete the setup wizard; the defaults are fine. During installation, the AI transcription engine is downloaded and configured (one-time, 3–5 GB), so an internet connection is required. If this step is interrupted, Aurel still installs, and you can finish later from **Settings → AI Engine**.
 4. Launch **Aurel** from the Start menu or the desktop shortcut.
 
 ### Windows (portable)
 
-Download `Aurel-0.3.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
+Download `Aurel-0.4.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
 
 ### macOS
 
@@ -59,17 +59,32 @@ Download `Aurel-0.3.0-Windows-x64-Portable.exe` and run it from any folder or a 
 - **Notation editor:** multi-part scores, tab, drum step grid, chords with adjustable arpeggio direction and spacing, articulations and techniques, alternate tunings and capo, and 200-step undo. Enter notes with the keyboard, the mouse, an on-screen piano or fretboard, or a USB MIDI keyboard.
 - **Sound:** sampled instruments with a per-part effects chain. You can add instruments made from your own samples and use them in any part, or in place of a built-in sound. On Windows, installed VST3 instruments and effects (for example Kontakt or Guitar Rig) run in real time with their native editors.
 - **Export:** WAV, MP3, FLAC, MIDI, MusicXML (MuseScore, Sibelius, Finale), PDF and ASCII tab, plus a DAW-ready folder of aligned stems.
-- **Interface:** Dark, Light and Sakura themes.
+- **Sessions:** every piece you open stays in the sidebar, so you can switch between transcriptions and compositions. Drag them to reorder or into folders.
+- **Editing:** drag notes to move them (up or down changes pitch, Ctrl copies). Delete either leaves a rest or shifts the following notes back. Type the number of bars; Aurel warns before removing bars that have notes. Tap tempo.
+- **Looping:** loop the whole piece, the selected bars, or typed bar numbers, and save named sections like "Chorus".
+- **Interface:** Dark, Light and Sakura themes, with floating notes in the background (adjustable in **Settings → Appearance**).
 - **Updates:** Aurel checks for a new release at startup and asks before installing. To check manually or turn off automatic checks, open **Settings → About & limits**.
 
 ---
+
+## What’s new in v0.4.0
+
+- **Sessions in the sidebar.** Every transcription and composition you open stays in the sidebar until you close it, with its undo history. Make folders, drag pieces between them, and collapse the sidebar to icons. The Back buttons are gone.
+- **Editing.** Drag a note to move it; drag up or down to change its pitch, hold Ctrl to copy. Delete can leave a rest or shift the following notes back (**Settings → Editor**; Shift+Delete does the other one, and the right-click menu offers both). Type the number of bars at the bottom right; Aurel warns before removing bars that contain notes. **Tap tempo** in the tempo dialog and in New composition.
+- **Looping.** The loop button opens a panel: whole piece, the selected bars, the current bar, typed bar numbers, and named sections. The loop is shown on the progress bar.
+- **Playback cursor** moves smoothly and keeps time with each note and rest, including on 16th notes.
+- **VST3.** Notes entered on a VST3 part sound right away, even before you first press Play. An imported VST3 instrument can replace a built-in sound everywhere, and a part's sound menu lists your VST3 instruments.
+- **Instrument names** follow the instrument when you change it, unless you renamed the part yourself.
+- **Vocals.** The vocal stem is cleaned to hold only the singers.
+- **Look and feel.** Grey backgrounds with floating notes and rests in the accent colour; the amount is set in **Settings → Appearance** (high values turn red, as they can slow older computers). New sidebar, and animations for pages, dialogs, menus and lists. Dialogs now dim the whole window, and right-click menus stay clear of the window edges.
+- **Fixes.** The instruments list in Studio scrolls and no longer clips the first instrument.
 
 ## What’s new in v0.3.0
 
 - **Background jobs** run side by side for different recordings. Click a download or transcription card to see its progress, then open the recording or score from there. Repeated transcription requests for the same project share one job.
 - **Transcription** offers **Detect automatically** or a choice of vocals, drums, bass, guitar, piano or other instruments. The choices filter the separated tracks. Detected BPM uses whole numbers. Open the tempo control to restore the detected BPM or choose whether tempo edits also change the speed of the recording.
 - **Studio** has a shared **Audio / MIDI** control at the bottom of transcription projects. With a part soloed, Audio plays its isolated stem and MIDI plays its notes. Parts without an isolated stem are silent in Audio solo mode. The transport also offers saved loops and up to four bars of count-in.
-- **Composing** supports **Ctrl+S** (or **Cmd+S** on Mac), live title and composer edits, and cover photos from the project’s cover or the library context menu. Use the Back button to return from Settings to the score. The score adds space around high and low notes. In **Settings → Editor**, choose whether new piano, E-Piano and organ parts default to one or two staves.
+- **Composing** supports **Ctrl+S** (or **Cmd+S** on Mac), live title and composer edits, and cover photos from the project’s cover or the library context menu. The score adds space around high and low notes. In **Settings → Editor**, choose whether new piano, E-Piano and organ parts default to one or two staves.
 - **Guitar and bass** support custom open-string pitches. **Suggest tuning** ranks compatible presets by how playable the written notes are.
 - **VST3 on Windows** can use installed instruments as named presets with an instrument type under **Settings → Instrument sounds → Your instruments**. In Studio, double-click a VST3 track’s name or open its context menu to edit the plug-in. **Settings → Default effects** plays major and minor scales in a random key through the draft chain, with a Stop button.
 - **Appearance** adds floating musical notes and rests to Dark and Light, and a moonlit cherry-blossom scene to Sakura. **Settings → Appearance → Reduce motion** applies across all themes.
@@ -79,7 +94,7 @@ Download `Aurel-0.3.0-Windows-x64-Portable.exe` and run it from any folder or a 
 
 ### Transcription
 
-Demucs separates the recording into vocals, drums, bass, guitar, piano and other. Basic Pitch turns each part into notes. Tempo, time signature and the first beat are detected, and the notes are lined up to a 16th-note grid as editable notation and tab. Aurel uses an NVIDIA graphics card when one is available, otherwise the processor.
+Demucs separates the recording into vocals, drums, bass, guitar, piano and other. The vocal stem is then cleaned so it holds only the singers: what is left of the band is filtered out, and passages without singing are silent. Basic Pitch turns each part into notes. Tempo, time signature and the first beat are detected, and the notes are lined up to a 16th-note grid as editable notation and tab. Aurel uses an NVIDIA graphics card when one is available, otherwise the processor.
 
 What to expect:
 
@@ -108,7 +123,7 @@ Plug in a USB MIDI keyboard, or pair a Bluetooth one in Windows; it is picked up
 
 ### Your own instruments
 
-In **Settings → Instrument sounds → Your instruments**, choose one or more audio files (WAV, AIFF, FLAC, MP3, OGG or M4A). Aurel reads each sample's root note from its file name, such as `Piano C4.wav` or `Bass_A#2.wav`, and you can change it. Notes between samples are re-pitched from the nearest one. Pick the instrument in any part's **Sound & effects**, or set **Use everywhere instead of** to replace a built-in sound in every piece.
+In **Settings → Instrument sounds → Your instruments**, choose one or more audio files (WAV, AIFF, FLAC, MP3, OGG or M4A). Aurel reads each sample's root note from its file name, such as `Piano C4.wav` or `Bass_A#2.wav`, and you can change it. Notes between samples are re-pitched from the nearest one. Pick the instrument in any part's **Sound & effects**, or set **Use everywhere instead of** to replace a built-in sound in every piece. Imported VST3 instruments can replace a built-in sound everywhere in the same way.
 
 ### Settings
 

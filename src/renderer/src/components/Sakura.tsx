@@ -23,11 +23,11 @@ function Blossoms({ cx, cy, r, n, seed }: { cx: number; cy: number; r: number; n
   )
 }
 
-export const SakuraScene = memo(function SakuraScene({ dim }: { dim: boolean }) {
-  const petals = useMemo(() => Array.from({ length: 22 }, (_, i) => ({
+export const SakuraScene = memo(function SakuraScene({ dim, petals: count = 22 }: { dim: boolean; petals?: number }) {
+  const petals = useMemo(() => Array.from({ length: count }, (_, i) => ({
     left: (i * 37) % 100, delay: -i * 1.87, duration: 16 + ((i * 7) % 12),
     drift: `${((i * 53) % 220) - 60}px`, spin: `${360 + ((i * 97) % 540)}deg`, scale: 0.6 + ((i * 13) % 10) / 14
-  })), [])
+  })), [count])
   const bark = '#64233e'
   return (
     <div className={dim ? "theme-scene sakura-scene theme-scene-dim" : "theme-scene sakura-scene"} aria-hidden="true">

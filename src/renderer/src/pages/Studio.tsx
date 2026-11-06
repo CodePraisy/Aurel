@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Download, Sparkles, ZoomIn, ZoomOut, PanelBottom, Loader2, Check, AlertTriangle, Star, RefreshCw } from 'lucide-react'
+import { Download, Sparkles, ZoomIn, ZoomOut, PanelBottom, Loader2, Check, AlertTriangle, Star, RefreshCw } from 'lucide-react'
 import { TRANSCRIPTION_SOURCES, type Project, type TranscriptionSource } from '@shared/types'
 import { applyRhythmEstimate, detectedBpm } from '@shared/rhythm'
 import { useApp, pendingProcess } from '@/store/app'
@@ -72,7 +72,7 @@ function useMidiInput(enabled: boolean) {
 }
 
 export default function Studio({ projectId }: { projectId: string }) {
-  const { back, go, jobs, processProject, changeCover, projectRevision, library, refreshLibrary } = useApp()
+  const { go, jobs, processProject, changeCover, projectRevision, library, refreshLibrary } = useApp()
   const { project, load, close, saving, setMetadata, setView, patchProject, edit, noteSelection, range, transposeSel } = useProject()
   const [err, setErr] = useState<string | null>(null)
   const [transcribeOpen, setTranscribeOpen] = useState(false)
@@ -168,8 +168,7 @@ export default function Studio({ projectId }: { projectId: string }) {
   return (
     <div className="h-full flex flex-col">
       {/* top bar */}
-      <header className="h-12 shrink-0 flex items-center gap-2 pl-2 pr-[150px] border-b border-line drag">
-        <button className="icon-btn no-drag" title="Back" onClick={() => back({ name: 'library' })}><ArrowLeft size={17} /></button>
+      <header className="h-12 shrink-0 flex items-center gap-2 pl-3 pr-[150px] border-b border-line drag">
         <button className="no-drag shrink-0" aria-label="Change cover photo" title="Change cover photo"
           onClick={() => void changeCover(p.id)}
           onContextMenu={(event) => openContextMenu(event, [{ label: 'Change cover photo…', onClick: () => void changeCover(p.id) }])}>
@@ -253,7 +252,7 @@ export default function Studio({ projectId }: { projectId: string }) {
       {player.fxError && <div role="alert" className="shrink-0 px-5 py-2 border-b border-line text-[12.5px] text-bad">Playback could not start: {player.fxError}</div>}
 
       <div className="flex-1 min-h-0 flex">
-        <aside className="shrink-0 border-r border-line bg-panel/40" style={{ width: sideW }}>
+        <aside className="shrink-0 min-h-0 overflow-hidden border-r border-line bg-panel/40" style={{ width: sideW }}>
           <PartsPanel project={p} />
         </aside>
         <div className="w-1 -ml-0.5 cursor-col-resize hover:bg-accent/40 z-10" onMouseDown={dragSide} />
@@ -324,6 +323,7 @@ function RhythmEditor({ field, project, onClose, setTempo, setTimeSig }: {
         {tempo ? (
           <div className="space-y-3">
             <label className="block"><div className="label mb-1.5">Score tempo (BPM)</div><input type="number" className="field" min={20} max={300} step={1} value={bpm} onChange={(e) => setBpm(e.target.value)} autoFocus onFocus={(e) => e.target.select()} required /></label>
+            <TapTempo onTempo={(t) => setBpm(String(t))} />
             {detected !== undefined && <button type="button" className="btn-soft" onClick={() => setBpm(String(detected))}>Use detected BPM ({detected})</button>}
             {project.audio && <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={linkAudio} onChange={(e) => setLinkAudio(e.target.checked)} /> Change recording speed with BPM</label>}
           </div>
@@ -418,6 +418,40 @@ function EmptyStudio({ project, running, onTranscribe, onEditRhythm }: { project
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/** Tap along to the beat; the tempo is the average of the last taps. A pause of 2 s starts over. */
+export function TapTempo({ onTempo }: { onTempo: (bpm: number) => void }) {
+  const taps = useRef<number[]>([])
+  const [count, setCount] = useState(0)
+  const [bpm, setBpm] = useState<number | null>(null)
+  const [pulse, setPulse] = useState(0)
+  const tap = () => {
+    const now = performance.now()
+    const list = taps.current
+    if (list.length && now - list[list.length - 1] > 2000) list.length = 0
+    list.push(now)
+    if (list.length > 8) list.shift()
+    setCount(list.length)
+    setPulse((p) => p + 1)
+    if (list.length >= 2) {
+      const gaps = list.slice(1).map((t, i) => t - list[i])
+      const value = Math.max(20, Math.min(300, Math.round(60000 / (gaps.reduce((a, b) => a + b, 0) / gaps.length))))
+      setBpm(value)
+      onTempo(value)
+    }
+  }
+  return (
+    <div className="flex items-center gap-3">
+      <button type="button" className="btn-soft !h-10 flex-1 relative overflow-hidden" aria-label="Tap tempo"
+        onMouseDown={(e) => { e.preventDefault(); tap() }}
+        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter' || e.key.toLowerCase() === 't') { e.preventDefault(); tap() } }}>
+        {pulse > 0 && <span key={pulse} className="absolute inset-0 bg-accent/25 animate-overlay [animation-direction:reverse]" />}
+        <span className="relative">Tap tempo</span>
+      </button>
+      <span className="w-24 text-[12px] text-muted tabular-nums">{bpm ? `${bpm} BPM` : count ? 'keep tapping…' : 'tap the beat'}</span>
     </div>
   )
 }

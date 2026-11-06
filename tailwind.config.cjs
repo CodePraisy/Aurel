@@ -19,7 +19,7 @@ module.exports = {
       keyframes: {
         fadein: { from: { opacity: 0, transform: 'translateY(6px)' }, to: { opacity: 1, transform: 'none' } }
       },
-      animation: { fadein: 'fadein .35s cubic-bezier(.2,.7,.2,1) both' }
+      animation: { fadein: 'fadein .35s cubic-bezier(.2,.7,.2,1) backwards' }
     }
   },
   plugins: []

@@ -88,9 +88,9 @@ export default function Library() {
           {list.length === 0 ? (
             <div className="text-center text-muted mt-24">{library.length ? 'Nothing matches.' : 'Your library is empty. Import a song or start a composition from Home.'}</div>
           ) : (
-            <div className="flex flex-col">
+            <div className="flex flex-col stagger">
               {list.map((e) => (
-                <div key={e.id} onContextMenu={(ev) => openContextMenu(ev, itemMenu(e, actions))} onDoubleClick={() => go({ name: 'studio', projectId: e.id })} className="group flex items-center gap-3.5 px-2 py-2 rounded-xl hover:bg-fg/[0.04] cursor-default">
+                <div key={e.id} onContextMenu={(ev) => openContextMenu(ev, itemMenu(e, actions))} onDoubleClick={() => go({ name: 'studio', projectId: e.id })} className="group flex items-center gap-3.5 px-2 py-2 rounded-xl hover:bg-fg/[0.05] hover:translate-x-0.5 transition-all duration-200 cursor-default">
                   <button onClick={() => go({ name: 'studio', projectId: e.id })}><Artwork id={e.id} artwork={e.artwork} title={e.title} size={46} /></button>
                   <div className="min-w-0 flex-1">
                     <button className="font-medium truncate hover:text-accent text-left max-w-full" onClick={() => go({ name: 'studio', projectId: e.id })}>{e.title}</button>
