@@ -216,7 +216,10 @@ export default function Studio({ projectId }: { projectId: string }) {
         <div className="shrink-0 px-5 py-2.5 border-b border-line bg-accent/[0.05] flex items-center gap-4">
           <Sparkles size={16} className="text-accent shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-medium">{installJob && !job ? `Installing AI engine · ${installJob.stage}` : job?.stage ?? 'Processing…'} <span className="text-muted font-normal">{(job ?? installJob)?.message}</span></div>
+            <div className="text-[13px] font-medium flex items-baseline gap-2">
+              <span className="min-w-0 truncate">{installJob && !job ? `Installing AI engine · ${installJob.stage}` : job?.stage ?? 'Processing…'} <span className="text-muted font-normal">{(job ?? installJob)?.message}</span></span>
+              {((job ?? installJob)?.pct ?? -1) >= 0 && <span className="ml-auto shrink-0 tabular-nums text-accent" aria-label="Progress">{Math.floor(((job ?? installJob)!.pct) * 100)}%</span>}
+            </div>
             <Progress pct={(job ?? installJob)?.pct ?? -1} className="mt-1.5 max-w-[520px]" />
           </div>
           <button className="btn-ghost" onClick={() => api.jobs.cancel((job ?? installJob)!.jobId)}>Cancel</button>
@@ -252,7 +255,7 @@ export default function Studio({ projectId }: { projectId: string }) {
       </div>
       <Transport project={p} onEditRhythm={setRhythmField} onTranspose={() => setTransposeTarget('playback')} />
       {rhythmField && <RhythmEditor field={rhythmField} project={p} onClose={() => setRhythmField(null)} setTempo={setTempo} setTimeSig={setTimeSig} />}
-      {rollTarget && rollChord && <ArpeggioEditor current={rollChord.arpeggio} onClose={() => setRollTarget(null)} onApply={(roll) => {
+      {rollTarget && rollChord && <ArpeggioEditor current={rollChord.arpeggio} bpm={p.score.tempo} onClose={() => setRollTarget(null)} onApply={(roll) => {
         edit((score) => {
           const part = score.parts.find((x) => x.id === rollTarget.partId)
           const chord = part?.measures.flatMap((m) => m.events).find((event) => event.id === rollTarget.eventId)

@@ -1,5 +1,5 @@
 import type { PackStatus, StemStream, VstChainResult, VstComponent, VstConfiguration, VstEvent, VstFailure, VstModule, VstParameter, VstRenderSpec, VstSlotSpec } from './sounds'
-import type { Collection, EngineStatus, JobUpdate, LibraryEntry, Project, RhythmEstimate, Settings, YouTubeCheck } from './types'
+import type { Collection, EngineStatus, JobUpdate, LibraryEntry, Project, RhythmEstimate, Settings, UpdateInfo, YouTubeCheck } from './types'
 
 export interface ImportResult { projectId: string; duplicate?: boolean }
 export interface FileFilter { name: string; extensions: string[] }
@@ -71,6 +71,11 @@ export interface AurelApi {
     status(): Promise<PackStatus[]>
     download(ids: string[]): Promise<{ jobId: string }>
     url(pack: string, file: string): string
+    customUrl(id: string, file: string): string
+    pickSamples(): Promise<string[]>
+    /** Import samples as a new instrument, or add them to `into`. Returns the updated settings. */
+    addCustom(name: string, files: string[], into?: string): Promise<Settings>
+    removeCustom(id: string): Promise<Settings>
   }
   vst: {
     scan(): Promise<{ available: boolean; roots: string[]; modules: (VstModule & { disabled: boolean })[] }>
@@ -90,5 +95,11 @@ export interface AurelApi {
     onEvent(cb: (event: VstEvent) => void): () => void
   }
   setup: { run(): Promise<{ jobId: string }> }
+  updates: {
+    check(): Promise<UpdateInfo>
+    /** Download and install the latest release, then restart Aurel. */
+    install(): Promise<{ jobId: string }>
+    version(): string
+  }
   shell: { openExternal(url: string): Promise<void> }
 }

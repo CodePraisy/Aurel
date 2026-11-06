@@ -13,6 +13,7 @@ import Library from '@/pages/Library'
 import SettingsPage from '@/pages/Settings'
 import Studio from '@/pages/Studio'
 import { NewCompositionDialog, YouTubeDialog, UrlDialog } from '@/pages/Dialogs'
+import { UpdateDialog } from '@/pages/UpdateDialog'
 
 export default function App() {
   const { route, go, settings, loadSettings, refreshLibrary, refreshEngine, toasts, jobs, importFile } = useApp()
@@ -45,6 +46,16 @@ export default function App() {
     void midi.start()
   }, [])
   useEffect(() => { midi.bind() }, [settings?.midiInput])
+  // look for a new release once per start, unless turned off
+  const updateChecked = useRef(false)
+  useEffect(() => {
+    if (!settings || updateChecked.current || !settings.checkUpdates) return
+    updateChecked.current = true
+    const t = setTimeout(() => void api.updates.check().then((u) => {
+      if (u.available && u.version !== useApp.getState().settings?.skippedVersion) useApp.setState({ update: u })
+    }, () => undefined), 4000)
+    return () => clearTimeout(t)
+  }, [settings])
   // plug-in crashes and reloads are announced, never silent
   useEffect(() => player.onHostEvent((e) => {
     const where = e.partName ? ` on ${e.partName}` : ''
@@ -61,7 +72,7 @@ export default function App() {
   }, [settings])
   useEffect(() => {
     if (!settings) return
-    player.configure({ sampleRate: settings.sampleRate, bufferSize: settings.bufferSize, sinkId: settings.outputDevice, volume: settings.masterVolume, fxDefaults: settings.fxDefaults, effectTails: settings.effectTails })
+    player.configure({ sampleRate: settings.sampleRate, bufferSize: settings.bufferSize, sinkId: settings.outputDevice, volume: settings.masterVolume, fxDefaults: settings.fxDefaults, effectTails: settings.effectTails, customSounds: settings.customSounds, soundSwaps: settings.soundSwaps })
     document.documentElement.style.zoom = String(settings.uiScale || 1)
   }, [settings])
   useEffect(() => {
@@ -141,7 +152,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <FileAudio size={15} className={j.error ? 'text-bad' : 'text-accent'} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12.5px] font-medium truncate">{j.label}</div>
+                  <div className="text-[12.5px] font-medium truncate flex gap-2"><span className="truncate">{j.label}</span>{!j.done && !j.error && j.pct >= 0 && <span className="ml-auto shrink-0 tabular-nums text-accent">{Math.floor(j.pct * 100)}%</span>}</div>
                   <div className="text-[11.5px] text-muted truncate">{j.error ? j.error.split('\n')[0] : j.stage}{j.message ? ` · ${j.message}` : ''}</div>
                 </div>
                 {!j.done && <button className="icon-btn !h-6 !w-6" title="Cancel" onClick={() => api.jobs.cancel(j.jobId)}><X size={13} /></button>}
@@ -175,6 +186,7 @@ export default function App() {
       <NewCompositionDialog />
       <YouTubeDialog />
       <UrlDialog />
+      <UpdateDialog />
     </div>
   )
 }

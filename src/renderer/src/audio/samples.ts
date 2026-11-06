@@ -1,4 +1,5 @@
-import { packFor } from '@shared/sounds'
+import { packFor, customId } from '@shared/sounds'
+import { customSound, onCustomSoundsChanged } from './custom'
 import { api } from '@/lib/api'
 import { drumPiece } from '@/music/theory'
 
@@ -21,17 +22,20 @@ export function loadPack(id: string): Promise<boolean> {
   if (states.get(id) === 'missing') return Promise.resolve(false) // not downloaded; retried after resetMissing()
   const pending = loading.get(id)
   if (pending) return pending
-  const pack = packFor(id)
+  const own = customSound(id)
+  const pack = own ? { id: customId(id)!, files: own.samples.map((s) => ({ note: s.note, file: s.file })) } : packFor(id)
   if (!pack) return Promise.resolve(false)
   states.set(id, 'loading')
   const p = (async () => {
     decoder ??= new OfflineAudioContext(2, 1, 44100)
     const map = new Map<number, AudioBuffer>()
     try {
-      const status = (await api.sounds.status()).find((s) => s.id === id)
-      if (!status?.ready) throw new Error('not downloaded')
+      if (!own) {
+        const status = (await api.sounds.status()).find((s) => s.id === id)
+        if (!status?.ready) throw new Error('not downloaded')
+      }
       await Promise.all(pack.files.map(async (f) => {
-        const r = await fetch(api.sounds.url(pack.id, f.file))
+        const r = await fetch(own ? api.sounds.customUrl(pack.id, f.file) : api.sounds.url(pack.id, f.file))
         if (!r.ok) throw new Error('missing')
         map.set(f.note, await decoder!.decodeAudioData(await r.arrayBuffer()))
       }))
@@ -49,6 +53,12 @@ export function loadPack(id: string): Promise<boolean> {
   loading.set(id, p)
   return p
 }
+
+// Your own instruments reload when their samples change.
+onCustomSoundsChanged((ids) => {
+  for (const id of ids) { buffers.delete(id); states.delete(id); loading.delete(id) }
+  emit()
+})
 
 /** Forget loaded state (after a download finishes) so packs are re-read from disk. */
 export function resetMissing(): void { for (const [k, v] of states) if (v === 'missing') states.delete(k) }

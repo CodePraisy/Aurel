@@ -1,3 +1,5 @@
+import { newer } from '../src/shared/version'
+import { noteFromName } from '../src/shared/sounds'
 import { describe, it, expect } from 'vitest'
 import { Midi } from '@tonejs/midi'
 import { decompose, spell, measureTicks, pitchFromLetter, WHOLE } from '@/music/theory'
@@ -140,6 +142,15 @@ describe('playback model', () => {
     expect(midi.tracks[0].notes.map((n) => [n.midi, n.ticks])).toEqual([[67, 0], [64, 48], [60, 96]])
   })
 
+  it('spaces a roll in beats, independent of tempo', () => {
+    for (const tempo of [60, 180]) {
+      const s = newScore({ title: 'Roll', composer: '', tempo, num: 4, den: 4, keyFifths: 0, instruments: ['piano'], measures: 1 })
+      const p = s.parts[0]
+      p.measures[0] = overwrite(p.measures[0], MT, { notes: [{ pitch: 60 }, { pitch: 64 }, { pitch: 67 }], velocity: 90, arpeggio: { direction: 'up', beats: 1 / 8 } }, 0, 960).measure
+      expect(flattenPart(p, tempoMap(s)).map((n) => n.tick)).toEqual([0, 60, 120])
+    }
+  })
+
   it('merges ties into one sounding note', () => {
     const s = newScore({ title: 't', composer: '', tempo: 120, num: 4, den: 4, keyFifths: 0, instruments: ['vocals'], measures: 2 })
     const p = s.parts[0]
@@ -209,5 +220,20 @@ describe('exporters', () => {
     expect(v.getUint32(24, true)).toBe(48000)
     expect(v.getUint16(34, true)).toBe(24)
     expect(w.length).toBe(44 + 100 * 2 * 3)
+  })
+})
+
+describe('releases and samples', () => {
+  it('compares versions numerically', () => {
+    expect(newer('v0.10.0', '0.9.3')).toBe(true)
+    expect(newer('0.2.0', '0.2.0')).toBe(false)
+    expect(newer('v0.1.9', '0.2.0')).toBe(false)
+  })
+  it('reads a sample\'s root note from its file name', () => {
+    expect(noteFromName('Grand Piano C4.wav')).toBe(60)
+    expect(noteFromName('Bass_A#2.wav')).toBe(46)
+    expect(noteFromName('Cello-Db3.aif')).toBe(49)
+    expect(noteFromName('69.wav')).toBe(69)
+    expect(noteFromName('kick.wav')).toBeNull()
   })
 })

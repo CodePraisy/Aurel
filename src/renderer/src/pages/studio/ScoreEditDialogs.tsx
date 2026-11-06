@@ -3,20 +3,38 @@ import type { Arpeggio } from '@shared/types'
 import { Select } from '@/components/menu'
 import { Modal } from '@/components/ui'
 
-export function ArpeggioEditor({ current, onClose, onApply }: { current?: Arpeggio; onClose: () => void; onApply: (roll?: Arpeggio) => void }) {
+// Gap between rolled notes, in beats (quarter notes), with the note value it equals.
+const ROLL_STEPS = [
+  { beats: 1 / 16, label: '1/16 beat (64th note)' },
+  { beats: 1 / 8, label: '1/8 beat (32nd note)' },
+  { beats: 1 / 6, label: '1/6 beat (16th-note triplet)' },
+  { beats: 1 / 4, label: '1/4 beat (16th note)' },
+  { beats: 1 / 3, label: '1/3 beat (8th-note triplet)' },
+  { beats: 1 / 2, label: '1/2 beat (8th note)' }
+]
+
+/** Nearest listed step; older chords stored milliseconds, converted at the score tempo. */
+function initialStep(current: Arpeggio | undefined, bpm: number): number {
+  const beats = current?.beats ?? (current?.delayMs !== undefined ? (current.delayMs * bpm) / 60_000 : 1 / 8)
+  return ROLL_STEPS.reduce((best, s) => (Math.abs(s.beats - beats) < Math.abs(best.beats - beats) ? s : best)).beats
+}
+
+export function ArpeggioEditor({ current, bpm, onClose, onApply }: { current?: Arpeggio; bpm: number; onClose: () => void; onApply: (roll?: Arpeggio) => void }) {
   const [direction, setDirection] = useState<Arpeggio['direction']>(current?.direction ?? 'up')
-  const [delay, setDelay] = useState(String(current?.delayMs ?? 35))
+  const [step, setStep] = useState(() => String(initialStep(current, bpm)))
   return (
     <Modal open onClose={onClose} title="Arpeggiate chord" width={390}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onApply({ direction, delayMs: Number(delay) }) }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); onApply({ direction, beats: Number(step) }) }}>
         <div><div className="label mb-1.5">Direction</div>
           <Select value={direction} onChange={setDirection} options={[
             { value: 'up', label: 'Bottom to top (low → high)' },
             { value: 'down', label: 'Top to bottom (high → low)' }
           ]} />
         </div>
-        <label className="block"><div className="label mb-1.5">Delay between notes (ms)</div><input className="field" type="number" min={1} max={250} step={1} value={delay} onChange={(e) => setDelay(e.target.value)} required /></label>
-        <p className="text-[12px] text-muted">The first note starts on the beat. Short chords use a shorter delay to fit the roll.</p>
+        <div><div className="label mb-1.5">Gap between notes</div>
+          <Select value={step} onChange={setStep} options={ROLL_STEPS.map((s) => ({ value: String(s.beats), label: s.label }))} />
+        </div>
+        <p className="text-[12px] text-muted">Measured in beats, so the roll follows the tempo. The first note starts on the beat; short chords use a smaller gap so the roll fits.</p>
         <div className="flex gap-2 justify-end">
           {current && <button type="button" className="btn-danger mr-auto" onClick={() => onApply()}>Remove roll</button>}
           <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>

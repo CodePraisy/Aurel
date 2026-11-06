@@ -1,13 +1,32 @@
 name: Build release downloads
+# Publishes Aurel <version from package.json> with Windows and Mac downloads.
+# Run it from the Actions tab ("Run workflow"), or push a tag like v0.2.0.
+# Installed copies of Aurel find the new release and offer to update.
 on:
   push:
-    branches: [main]
-    paths: ['.github/workflows/build-macos.yml']
+    tags: ['v*']
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Create the release if it does not exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 ||
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --title "Aurel ${TAG#v}" --generate-notes --target "$GITHUB_SHA"
+
   packages:
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -31,29 +50,19 @@ jobs:
         run: |
           node node_modules/electron-vite/bin/electron-vite.js build
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node node_modules/electron-builder/cli.js --win nsis portable --publish never
+          node node_modules/electron-builder/cli.js --win nsis portable --x64 --publish never
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          Move-Item -LiteralPath 'release/Aurel Setup 0.1.0.exe' -Destination 'release/Aurel-0.1.0-Windows-x64.exe'
-          Move-Item -LiteralPath 'release/Aurel 0.1.0.exe' -Destination 'release/Aurel-0.1.0-Windows-x64-Portable.exe'
       - if: runner.os == 'macOS'
         run: npm run dist:mac -- --${{ matrix.arch }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Attach packages to Aurel 0.1.0
+      - name: Attach downloads to the release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
         run: |
           shopt -s nullglob
-          files=(release/Aurel-0.1.0-*.exe release/Aurel-0.1.0-macOS-*.zip)
+          files=(release/Aurel-*-Windows-x64*.exe release/Aurel-*-macOS-*.zip)
           test "${#files[@]}" -gt 0
-          for file in "${files[@]}"; do
-            name="${file##*/}"
-            existing=$(gh api "repos/$GITHUB_REPOSITORY/releases/436693734/assets" --jq ".[] | select(.name == \"$name\" and .state == \"uploaded\") | .id")
-            if [ -n "$existing" ]; then continue; fi
-            curl --fail-with-body --silent --show-error --retry 3 -X POST \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H 'Content-Type: application/octet-stream' \
-              --data-binary "@$file" \
-              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/436693734/assets?name=$name" > /dev/null
-          done
+          gh release upload "$TAG" "${files[@]}" --clobber -R "$GITHUB_REPOSITORY"

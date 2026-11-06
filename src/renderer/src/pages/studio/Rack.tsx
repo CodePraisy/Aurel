@@ -6,7 +6,8 @@ import { useProject } from '@/store/project'
 import { useApp } from '@/store/app'
 import { api } from '@/lib/api'
 import { player, soundFor, fxFor } from '@/audio/player'
-import { SOUNDS } from '@/audio/synth'
+import { SOUNDS, soundLabel, type SoundId } from '@/audio/synth'
+import { customSounds, swapFor } from '@/audio/custom'
 import { Modal, cx } from '@/components/ui'
 import FxChainEditor, { PluginControls, PluginProblem } from './FxChainEditor'
 import { usePlayer } from './Transport'
@@ -70,13 +71,26 @@ export default function Rack() {
               const on = !part.vstInstrument && sound === s.id
               return (
                 <div key={s.id} className={cx('flex items-center gap-2 px-2.5 h-9 rounded-lg cursor-pointer text-[13px]', on ? 'bg-accent/15 text-accent' : 'hover:bg-fg/[0.06]')} onClick={() => choose(s.id)}>
-                  <span className="flex-1 truncate">{s.label}{s.for.includes(part.kind) && !on ? <span className="text-faint text-[11px]"> · suggested</span> : null}</span>
+                  <span className="flex-1 truncate">{s.label}{swapFor(s.id) ? <span className="text-faint text-[11px]"> · plays {soundLabel(swapFor(s.id) as SoundId)}</span> : s.for.includes(part.kind) && !on ? <span className="text-faint text-[11px]"> · suggested</span> : null}</span>
                   {st && !st.ready && (downloading ? <Loader2 size={13} className="animate-spin text-faint" /> : <button className="icon-btn !h-6 !w-6" title={`Download ${packFor(s.id)?.label}`} onClick={(e) => { e.stopPropagation(); void download([s.id]) }}><Download size={13} /></button>)}
                   {st?.ready && on && <Check size={14} />}
                 </div>
               )
             })}
+            {customSounds().length > 0 && <div className="label pt-2 pb-1 px-1">Your instruments</div>}
+            {customSounds().map((c) => {
+              const id = `custom:${c.id}`
+              const on = !part.vstInstrument && sound === id
+              return (
+                <div key={id} className={cx('flex items-center gap-2 px-2.5 h-9 rounded-lg cursor-pointer text-[13px]', on ? 'bg-accent/15 text-accent' : 'hover:bg-fg/[0.06]')} onClick={() => choose(id)}>
+                  <span className="flex-1 truncate">{c.name}</span>
+                  <span className="text-faint text-[11px]">{c.samples.length} sample{c.samples.length === 1 ? '' : 's'}</span>
+                  {on && <Check size={14} />}
+                </div>
+              )
+            })}
           </div>
+          <button className="btn-ghost w-full mt-1 !justify-start !text-[12px]" onClick={() => { close(); useApp.getState().go({ name: 'settings', section: 'sounds' }) }}>Add your own instrument…</button>
           {packs.some((p) => !p.ready) && <button className="btn-soft w-full mt-2" disabled={downloading} onClick={() => download(packs.filter((p) => !p.ready).map((p) => p.id))}><Download size={14} /> Download all sounds</button>}
           <p className="text-[11px] text-faint mt-2 leading-relaxed">Built-in instruments use recorded samples once downloaded.</p>
         </div>

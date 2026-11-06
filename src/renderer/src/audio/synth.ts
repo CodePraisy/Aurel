@@ -3,10 +3,13 @@
 import type { InstrumentKind, Technique } from '@shared/types'
 import { drumPiece } from '@/music/theory'
 import { packReady, playSample, loadPack } from './samples'
+import { customSound, customSounds } from './custom'
 
-export type SoundId = 'piano' | 'epiano' | 'organ' | 'nylon' | 'steel' | 'clean' | 'drive' | 'dist' | 'bass' | 'synthbass' | 'drums' | 'voice' | 'strings' | 'brass' | 'reed' | 'lead' | 'pad' | 'sine'
+export type BuiltinSoundId = 'piano' | 'epiano' | 'organ' | 'nylon' | 'steel' | 'clean' | 'drive' | 'dist' | 'bass' | 'synthbass' | 'drums' | 'voice' | 'strings' | 'brass' | 'reed' | 'lead' | 'pad' | 'sine'
+/** A built-in sound, or one of the user's own instruments (`custom:<id>`). */
+export type SoundId = BuiltinSoundId | `custom:${string}`
 
-export const SOUNDS: { id: SoundId; label: string; for: InstrumentKind[] }[] = [
+export const SOUNDS: { id: BuiltinSoundId; label: string; for: InstrumentKind[] }[] = [
   { id: 'piano', label: 'Grand Piano', for: ['piano', 'other'] },
   { id: 'epiano', label: 'E-Piano', for: ['epiano', 'piano'] },
   { id: 'organ', label: 'Drawbar Organ', for: ['organ'] },
@@ -27,9 +30,22 @@ export const SOUNDS: { id: SoundId; label: string; for: InstrumentKind[] }[] = [
   { id: 'sine', label: 'Pure Sine', for: ['other'] }
 ]
 
-export const DEFAULT_SOUND: Record<InstrumentKind, SoundId> = {
+export const DEFAULT_SOUND: Record<InstrumentKind, BuiltinSoundId> = {
   piano: 'piano', epiano: 'epiano', organ: 'organ', synth: 'lead', 'acoustic-guitar': 'steel', 'clean-guitar': 'clean',
   'distorted-guitar': 'dist', bass: 'bass', drums: 'drums', vocals: 'voice', strings: 'strings', brass: 'brass', woodwinds: 'reed', other: 'piano'
+}
+
+/** Display name of any sound, built-in or your own. */
+export function soundLabel(id: SoundId): string {
+  return SOUNDS.find((s) => s.id === id)?.label ?? customSound(id)?.name ?? 'Missing instrument'
+}
+
+/** Built-in sounds followed by the user's own instruments. */
+export function allSounds(): { id: SoundId; label: string; custom: boolean }[] {
+  return [
+    ...SOUNDS.map((s) => ({ id: s.id as SoundId, label: s.label, custom: false })),
+    ...customSounds().map((c) => ({ id: `custom:${c.id}` as SoundId, label: c.name, custom: true }))
+  ]
 }
 
 export interface NoteOpts {

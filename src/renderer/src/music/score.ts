@@ -1,4 +1,4 @@
-import type { Measure, NoteEvent, NoteHead, Part, Score, InstrumentKind, Project, Technique } from '@shared/types'
+import type { Arpeggio, Measure, NoteEvent, NoteHead, Part, Score, InstrumentKind, Project, Technique } from '@shared/types'
 import { PPQ } from '@shared/types'
 import { decompose, INSTRUMENTS, measureTicks, isFretted } from './theory'
 
@@ -222,7 +222,7 @@ export function flattenPart(p: Part, timing: TempoMap): PlayNote[] {
       const roll = p.kind !== 'drums' && e.notes.length > 1 ? e.arpeggio : undefined
       const notes = roll ? [...e.notes].sort((a, b) => (roll.direction === 'up' ? 1 : -1) * (a.pitch - b.pitch)) : e.notes
       const step = roll
-        ? Math.min(Math.round(Math.max(0, roll.delayMs) * timing.bpmAt(tick) * PPQ / 60_000), Math.floor(e.dur * 0.8 / (notes.length - 1)))
+        ? Math.min(arpeggioStep(roll, timing.bpmAt(tick)), Math.floor(e.dur * 0.8 / (notes.length - 1)))
         : 0
       for (const [i, n] of notes.entries()) {
         const cont = open.get(n.pitch)
@@ -295,4 +295,10 @@ export function rebar(part: Part, oldMt: number, newMt: number, count: number): 
     }
   })
   part.measures = raw.map((events) => normalizeMeasure({ events }, newMt))
+}
+
+/** Ticks between the notes of a rolled chord (older projects stored milliseconds). */
+export function arpeggioStep(roll: Arpeggio, bpm: number): number {
+  if (roll.beats !== undefined) return Math.max(0, Math.round(roll.beats * PPQ))
+  return Math.max(0, Math.round((roll.delayMs ?? 0) * bpm * PPQ / 60_000))
 }

@@ -74,7 +74,11 @@ const api: AurelApi = {
   sounds: {
     status: () => i('sounds:status'),
     download: (ids) => i('sounds:download', ids),
-    url: (pack, file) => `aurel://s/${pack}/${file}`
+    url: (pack, file) => `aurel://s/${pack}/${file}`,
+    customUrl: (id, file) => `aurel://c/${id}/${file}`,
+    pickSamples: () => i('sounds:pickSamples'),
+    addCustom: (name, files, into) => i('sounds:addCustom', name, files, into),
+    removeCustom: (id) => i('sounds:removeCustom', id)
   },
   vst: {
     scan: () => i('vst:scan'),
@@ -96,6 +100,11 @@ const api: AurelApi = {
     }
   },
   setup: { run: () => i('setup:run') },
+  updates: {
+    check: () => i('updates:check'),
+    install: () => i('updates:install'),
+    version: () => ipcRenderer.sendSync('updates:version')
+  },
   shell: { openExternal: (url) => i('shell:openExternal', url) }
 }
 

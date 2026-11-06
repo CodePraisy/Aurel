@@ -54,6 +54,44 @@ export async function extractCover(ctx: JobCtx, input: string, out: string): Pro
   } catch { return false }
 }
 
+/**
+ * Remove silence before the music starts, so playback and transcription begin with the first sound.
+ * Anything above about -54 dBFS counts as sound, so soft notes and fade-ins are kept, along with a
+ * 30 ms margin before them. Returns the seconds removed (0 when there was no real gap).
+ */
+export function trimLeadingSilence(wavFile: string): number {
+  const buf = fs.readFileSync(wavFile)
+  let off = 12, channels = 2, rate = 44100, bits = 16, dataStart = -1, dataLen = 0, dataHeader = -1
+  while (off + 8 <= buf.length) {
+    const id = buf.toString('ascii', off, off + 4)
+    const size = buf.readUInt32LE(off + 4)
+    if (id === 'fmt ') { channels = buf.readUInt16LE(off + 10); rate = buf.readUInt32LE(off + 12); bits = buf.readUInt16LE(off + 22) }
+    if (id === 'data') { dataHeader = off; dataStart = off + 8; dataLen = Math.min(size, buf.length - dataStart); break }
+    off += 8 + size + (size % 2)
+  }
+  if (dataStart < 0 || bits !== 16) return 0
+  const frameBytes = 2 * channels
+  const frames = Math.floor(dataLen / frameBytes)
+  const threshold = Math.round(0.002 * 32768) // ≈ -54 dBFS
+  let first = frames
+  for (let i = 0; i < frames && first === frames; i++) {
+    for (let c = 0; c < channels; c++) {
+      if (Math.abs(buf.readInt16LE(dataStart + i * frameBytes + c * 2)) > threshold) { first = i; break }
+    }
+  }
+  if (first >= frames) return 0 // silent file: leave it alone
+  const cut = Math.max(0, first - Math.round(rate * 0.03))
+  if (cut < rate * 0.25) return 0
+  const kept = (frames - cut) * frameBytes
+  const out = Buffer.alloc(dataStart + kept)
+  buf.copy(out, 0, 0, dataStart)
+  buf.copy(out, dataStart, dataStart + cut * frameBytes, dataStart + frames * frameBytes)
+  out.writeUInt32LE(out.length - 8, 4)
+  out.writeUInt32LE(kept, dataHeader + 4)
+  writeAtomic(wavFile, out)
+  return cut / rate
+}
+
 /** Min/max peak pairs for drawing a waveform, computed from our WAV. */
 export function computePeaks(wavFile: string, buckets = 3000): number[] {
   const buf = fs.readFileSync(wavFile)
@@ -119,10 +157,12 @@ export async function importAudioJob(ctx: JobCtx, file: string, allowDuplicate: 
   try {
     await toWav(ctx, file, join(dir, 'audio', 'original.wav'), info.duration)
     ctx.progress('Analysing waveform', -1)
+    const trimmed = trimLeadingSilence(join(dir, 'audio', 'original.wav'))
     writeAtomic(join(dir, 'peaks.json'), JSON.stringify(computePeaks(join(dir, 'audio', 'original.wav'))))
     if (info.hasCover) await extractCover(ctx, file, join(dir, 'artwork.jpg'))
     const title = info.title || basename(file, extname(file)).replace(/[_]+/g, ' ')
-    const p = emptyTranscriptionProject(id, title, info.artist ?? '', info.duration)
+    const p = emptyTranscriptionProject(id, title, info.artist ?? '', Math.max(0, info.duration - trimmed))
+    p.audio!.trimmed = trimmed
     p.audio!.sourceUrl = file
     ctx.progress('Detecting tempo & time signature', -1)
     applyTempoGuess(p, join(dir, 'audio', 'original.wav'))

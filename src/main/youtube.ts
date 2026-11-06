@@ -4,7 +4,7 @@ import { spawn } from 'child_process'
 import { net } from 'electron'
 import type { Project, YouTubeCheck, YouTubeMeta } from '@shared/types'
 import { paths, findDuplicate, saveProjectFile, indexProject, writeAtomic } from './store'
-import { computePeaks, emptyTranscriptionProject, newId, toWav, applyTempoGuess } from './media'
+import { computePeaks, emptyTranscriptionProject, newId, toWav, applyTempoGuess, trimLeadingSilence } from './media'
 import type { JobCtx } from './jobs'
 import { ytDlpCmd, installYtDlp, toolEnv } from './tools'
 
@@ -113,11 +113,13 @@ export async function acquireYouTubeJob(ctx: JobCtx, url: string): Promise<{ pro
     await toWav(ctx, src, join(dir, 'audio', 'original.wav'), meta.duration ?? 0, 'Converting audio')
     fs.rmSync(src, { force: true })
     ctx.progress('Saving to library', -1)
+    const trimmed = trimLeadingSilence(join(dir, 'audio', 'original.wav'))
     writeAtomic(join(dir, 'peaks.json'), JSON.stringify(computePeaks(join(dir, 'audio', 'original.wav'))))
     if (meta.thumbnail) {
       try { const t = await net.fetch(meta.thumbnail); if (t.ok) fs.writeFileSync(join(dir, 'artwork.jpg'), Buffer.from(await t.arrayBuffer())) } catch { /* artwork optional */ }
     }
-    const p: Project = emptyTranscriptionProject(id, meta.title, meta.channel, meta.duration ?? 0)
+    const p: Project = emptyTranscriptionProject(id, meta.title, meta.channel, Math.max(0, (meta.duration ?? 0) - trimmed))
+    p.audio!.trimmed = trimmed
     p.audio!.sourceUrl = meta.url
     p.audio!.youtube = meta
     ctx.progress('Detecting tempo & time signature', -1)

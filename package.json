@@ -1,7 +1,7 @@
 {
   "name": "aurel",
   "productName": "Aurel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI music transcription, composition & practice studio",
   "author": "Praise Onuoha",
   "license": "UNLICENSED",
@@ -70,7 +70,10 @@
       }
     ],
     "win": {
-      "target": "nsis",
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "build/icon.png",
       "extraResources": [
         {
@@ -86,11 +89,15 @@
     "nsis": {
       "include": "build/installer.nsh",
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Aurel-${version}-Windows-x64.${ext}"
     },
     "mac": {
       "artifactName": "Aurel-${version}-macOS-${arch}.${ext}",
       "target": "zip"
+    },
+    "portable": {
+      "artifactName": "Aurel-${version}-Windows-x64-Portable.${ext}"
     }
   },
   "overrides": {

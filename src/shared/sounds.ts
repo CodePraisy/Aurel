@@ -55,6 +55,27 @@ export function packFor(id: string): SoundPack | undefined { return SOUND_PACKS.
 
 export interface PackStatus { id: string; have: number; total: number; ready: boolean }
 
+// ---------- your own instruments ----------
+/** A sample-based instrument made from the user's own recordings. Used as sound id `custom:<id>`. */
+export interface CustomSound { id: string; name: string; samples: { file: string; note: number }[] }
+export const CUSTOM_PREFIX = 'custom:'
+export const customId = (sound: string): string | null => (sound.startsWith(CUSTOM_PREFIX) ? sound.slice(CUSTOM_PREFIX.length) : null)
+
+/** Root note from a sample's file name: "Piano C4.wav", "Bass_A#2.wav", "Cello-Db3.wav" or "60.wav". */
+export function noteFromName(name: string): number | null {
+  const base = name.replace(/\.[^.]+$/, '')
+  const m = base.match(/(?:^|[^A-Za-z])([A-Ga-g])(#|b|s|♯|♭)?(-?\d)(?!\d)/)
+  if (m) {
+    const pc = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1].toLowerCase() as 'c']
+    const acc = m[2] === '#' || m[2] === 's' || m[2] === '♯' ? 1 : m[2] === 'b' || m[2] === '♭' ? -1 : 0
+    const midi = (Number(m[3]) + 1) * 12 + pc + acc
+    if (midi >= 0 && midi <= 127) return midi
+  }
+  const n = base.match(/(?:^|\D)(\d{2,3})$/)
+  if (n && Number(n[1]) <= 127) return Number(n[1])
+  return null
+}
+
 // ---------- effects ----------
 export type FxType = 'eq' | 'comp' | 'reverb' | 'delay' | 'chorus' | 'drive' | 'filter' | 'gain'
 export interface BuiltinFxSlot { id: string; type: FxType; on: boolean; params: Record<string, number> }
