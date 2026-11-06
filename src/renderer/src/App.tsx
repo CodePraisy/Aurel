@@ -20,6 +20,8 @@ import { UpdateDialog } from '@/pages/UpdateDialog'
 
 export default function App() {
   const { route, go, settings, loadSettings, refreshLibrary, refreshEngine, toasts, jobs, importFile } = useApp()
+  const [systemStill, setSystemStill] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const still = !!settings?.reduceMotion || systemStill
   const [version] = useState(() => api.updates.version())
   const [updateStatus, setUpdateStatus] = useState<{ checking: boolean; error?: string } | null>(null)
   const updateRequest = useRef(0)
@@ -110,13 +112,14 @@ export default function App() {
   }, [settings])
   useEffect(() => {
     const preference = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const sync = () => {
-      document.documentElement.dataset.motion = settings?.reduceMotion || preference.matches ? 'reduce' : ''
-    }
+    const sync = () => setSystemStill(preference.matches)
     sync()
     preference.addEventListener('change', sync)
     return () => preference.removeEventListener('change', sync)
-  }, [settings?.reduceMotion])
+  }, [])
+  useEffect(() => {
+    document.documentElement.dataset.motion = still ? "reduce" : ""
+  }, [still])
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -158,14 +161,13 @@ export default function App() {
   const jobList = Object.values(jobs).reverse()
   const selectedJob = openJob ? jobs[openJob] : undefined
   const dim = route.name !== 'home'
-  const still = settings.reduceMotion
 
   return (
     <div className="h-full flex relative">
       {settings.theme === 'sakura'
         ? <SakuraScene dim={dim} petals={settings.particles} />
         : <div className={cx('theme-scene', dim && 'theme-scene-dim')} aria-hidden="true">
-            <NoteField count={settings.particles} dim={dim} theme={settings.theme} accent={`${settings.accent}${still ? '-still' : ''}`} />
+            <NoteField count={settings.particles} dim={dim} theme={settings.theme} accent={settings.accent} still={still} />
           </div>}
       <Sidebar version={version} checking={!!updateStatus?.checking} onCheckUpdates={() => void checkForUpdates()} />
 

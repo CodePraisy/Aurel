@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
 import { Check, ChevronDown, ChevronRight } from 'lucide-react'
-import { cx } from './ui'
+import { cx, moveMenuFocus } from './ui'
 
 export interface MenuEntry {
   label?: string
@@ -32,11 +32,11 @@ export function openContextMenu(e: React.MouseEvent | MouseEvent, items: MenuEnt
 const TITLE_BAR = 42
 const WINDOW_BUTTONS = 150
 
-function MenuList({ items, x, y, onDone, leftOf }: { items: MenuEntry[]; x: number; y: number; onDone: () => void; leftOf?: number }) {
+function MenuList({ items, x, y, onDone, leftOf, onBack, focusFirst = true }: { items: MenuEntry[]; x: number; y: number; onDone: () => void; leftOf?: number; onBack?: () => void; focusFirst?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1
   const [pos, setPos] = useState({ x: x / zoom, y: y / zoom })
-  const [sub, setSub] = useState<{ i: number; x: number; y: number; leftOf: number } | null>(null)
+  const [sub, setSub] = useState<{ i: number; x: number; y: number; leftOf: number; focus: boolean } | null>(null)
   const [shown, setShown] = useState(false)
   useLayoutEffect(() => {
     const el = ref.current
@@ -53,14 +53,26 @@ function MenuList({ items, x, y, onDone, leftOf }: { items: MenuEntry[]; x: numb
     setPos({ x: nx / zoom, y: ny / zoom })
     setShown(true)
   }, [x, y, leftOf, zoom])
+  useLayoutEffect(() => { if (shown && focusFirst) ref.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus() }, [shown, focusFirst])
+  const openSub = (button: HTMLButtonElement, i: number, focus: boolean) => {
+    const bounds = ref.current!.getBoundingClientRect()
+    setSub({ i, x: bounds.right + 4, y: button.getBoundingClientRect().top - 6, leftOf: bounds.left, focus })
+  }
   return (
     <>
-      <div ref={ref} data-context-menu role="menu" className={cx('fixed z-[140] min-w-[210px] max-w-[300px] card shadow-2xl p-1.5 overflow-auto', shown ? 'animate-pop-menu' : 'invisible')} style={{ left: pos.x, top: pos.y, maxHeight: (window.innerHeight - 16) / zoom }} onContextMenu={(e) => e.preventDefault()}>
+      <div ref={ref} data-context-menu role="menu" className={cx('fixed z-[140] min-w-[210px] max-w-[300px] card shadow-2xl p-1.5 overflow-auto', shown ? 'animate-pop-menu' : 'invisible')} style={{ left: pos.x, top: pos.y, maxHeight: (window.innerHeight - 16) / zoom }} onContextMenu={(e) => e.preventDefault()} onKeyDown={(event) => {
+        const button = document.activeElement as HTMLButtonElement
+        const index = Number(button.dataset.menuIndex)
+        if (event.key === "ArrowRight" && items[index]?.submenu) { event.preventDefault(); openSub(button, index, true); return }
+        if (event.key === "ArrowLeft" && onBack) { event.preventDefault(); onBack(); return }
+        if (["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) setSub(null)
+        moveMenuFocus(event, Array.from(ref.current!.querySelectorAll("button:not(:disabled)")), false)
+      }}>
         {items.map((it, i) => it.separator ? <div key={i} className="h-px bg-line my-1" /> : (
-          <button key={i} disabled={it.disabled}
+          <button key={i} role="menuitem" data-menu-index={i} aria-haspopup={it.submenu ? "menu" : undefined} aria-expanded={it.submenu ? sub?.i === i : undefined} disabled={it.disabled}
             className={cx('w-full flex items-center gap-2.5 px-2.5 h-8 rounded-md text-[13px] text-left disabled:opacity-40', it.danger ? 'text-bad hover:bg-bad/10' : 'text-fg hover:bg-fg/[0.07]', sub?.i === i && 'bg-fg/[0.07]')}
-            onMouseEnter={(e) => { if (it.submenu) { const r = ref.current!.getBoundingClientRect(); setSub({ i, x: r.right + 4, y: e.currentTarget.getBoundingClientRect().top - 6, leftOf: r.left }) } else setSub(null) }}
-            onClick={() => { if (it.submenu) return; it.onClick?.(); onDone() }}>
+            onMouseEnter={(event) => { if (it.submenu) openSub(event.currentTarget, i, false); else setSub(null) }}
+            onClick={(event) => { if (it.submenu) openSub(event.currentTarget, i, true); else { it.onClick?.(); onDone() } }}>
             <span className="w-4 flex justify-center text-muted">{it.checked ? <Check size={14} className="text-accent" /> : it.icon}</span>
             <span className="flex-1 truncate">{it.label}</span>
             {it.hint && <span className="text-faint text-[11px]">{it.hint}</span>}
@@ -68,7 +80,10 @@ function MenuList({ items, x, y, onDone, leftOf }: { items: MenuEntry[]; x: numb
           </button>
         ))}
       </div>
-      {sub && items[sub.i]?.submenu && <MenuList items={items[sub.i].submenu!} x={sub.x} y={sub.y} onDone={onDone} leftOf={sub.leftOf} />}
+      {sub && items[sub.i]?.submenu && <MenuList items={items[sub.i].submenu!} x={sub.x} y={sub.y} onDone={onDone} leftOf={sub.leftOf} focusFirst={sub.focus} onBack={() => {
+        ref.current?.querySelectorAll<HTMLButtonElement>("[data-menu-index]").forEach((button) => { if (Number(button.dataset.menuIndex) === sub.i) button.focus() })
+        setSub(null)
+      }} />}
     </>
   )
 }
@@ -128,19 +143,33 @@ export function Select<T extends string | number>({ value, options, onChange, cl
       window.removeEventListener('animationend', place, true)
     }
   }, [open])
+  useLayoutEffect(() => {
+    if (open && rect && document.activeElement === ref.current?.querySelector("button")) {
+      (listRef.current?.querySelector<HTMLButtonElement>('[data-sel="1"]') ?? listRef.current?.querySelector("button"))?.focus()
+    }
+  }, [open, rect])
   const cur = options.find((o) => o.value === value)
   return (
-    <div id={id} ref={ref} className={cx('relative', className)} style={{ width }} title={title}>
-      <button type="button" className="field flex items-center justify-between gap-2 text-left" onClick={() => setOpen(!open)}>
+    <div id={id} data-keyboard-menu="" ref={ref} className={cx('relative', className)} style={{ width }} title={title}>
+      <button type="button" className="field flex items-center justify-between gap-2 text-left" aria-expanded={open} onClick={() => setOpen(!open)} onKeyDown={(event) => {
+        if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(event.key)) return
+        event.preventDefault(); event.stopPropagation()
+        if (!open) { setOpen(true); return }
+        const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>("button")
+        if (buttons?.length) (listRef.current?.querySelector<HTMLButtonElement>('[data-sel="1"]') ?? buttons[0]).focus()
+      }}>
         <span className="truncate">{cur?.label ?? String(value)}</span>
         <ChevronDown size={14} className={cx('text-muted shrink-0 transition-transform', open && 'rotate-180')} />
       </button>
       {open && createPortal(
-        <div ref={listRef} data-select-popup={id} className="fixed z-[120] card shadow-2xl p-1 overflow-auto animate-fadein" style={rect ?? { visibility: 'hidden' }}>
+        <div ref={listRef} data-select-popup={id} className="fixed z-[120] card shadow-2xl p-1 overflow-auto animate-fadein" onKeyDown={(event) => {
+          if (event.key === "Escape") { event.stopPropagation(); setOpen(false); ref.current?.querySelector("button")?.focus(); return }
+          moveMenuFocus(event, Array.from(listRef.current!.querySelectorAll("button")))
+        }} style={rect ?? { visibility: 'hidden' }}>
           {options.map((o) => (
             <button key={String(o.value)} type="button" data-sel={o.value === value ? '1' : '0'}
               className={cx('w-full flex items-center gap-2 px-2.5 h-8 rounded-md text-[13px] text-left', o.value === value ? 'bg-accent/15 text-accent' : 'text-fg hover:bg-fg/[0.07]')}
-              onClick={() => { onChange(o.value); setOpen(false) }}>
+              onClick={(event) => { onChange(o.value); setOpen(false); if (event.detail === 0) ref.current?.querySelector("button")?.focus() }}>
               <span className="flex-1 truncate">{o.label}</span>
               {o.hint && <span className="text-[11px] text-faint">{o.hint}</span>}
             </button>

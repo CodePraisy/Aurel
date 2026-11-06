@@ -66,6 +66,20 @@ export function Artwork({ id, artwork, title, size = 44, className }: { id: stri
   )
 }
 
+export function moveMenuFocus(event: React.KeyboardEvent, buttons: HTMLButtonElement[], horizontal = true): void {
+  if ((event.target as HTMLElement).closest("input, textarea, select, [contenteditable]") || !buttons.length) return
+  const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+  let next: number
+  if (event.key === "Home") next = 0
+  else if (event.key === "End") next = buttons.length - 1
+  else if (event.key === "ArrowDown" || (horizontal && event.key === "ArrowRight")) next = (index + 1) % buttons.length
+  else if (event.key === "ArrowUp" || (horizontal && event.key === "ArrowLeft")) next = (index < 0 ? buttons.length - 1 : (index + buttons.length - 1) % buttons.length)
+  else return
+  event.preventDefault()
+  event.stopPropagation()
+  buttons[next].focus()
+}
+
 export function Popover({ trigger, children, align = 'left', side = 'bottom', width = 240 }: { trigger: (open: () => void, isOpen: boolean) => ReactNode; children: (close: () => void) => ReactNode; align?: 'left' | 'right'; side?: 'top' | 'bottom'; width?: number }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -81,11 +95,14 @@ export function Popover({ trigger, children, align = 'left', side = 'bottom', wi
     window.addEventListener('keydown', key)
     return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', key) }
   }, [open])
+  const panel = useRef<HTMLDivElement>(null)
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={ref} data-keyboard-menu={open ? "" : undefined} onKeyDown={(event) => {
+      if (open && panel.current) moveMenuFocus(event, Array.from(panel.current.querySelectorAll("button:not(:disabled)")))
+    }}>
       {trigger(() => setOpen((o) => !o), open)}
       {open && (
-        <div className={cx('absolute z-40 card shadow-xl p-1.5', side === 'top' ? 'animate-pop-up' : 'animate-pop-down', side === 'top' ? 'bottom-full mb-1.5 max-h-[65vh] overflow-y-auto' : 'mt-1.5', align === 'right' ? 'right-0' : 'left-0')} style={{ width }}>
+        <div ref={panel} className={cx('absolute z-40 card shadow-xl p-1.5', side === 'top' ? 'animate-pop-up' : 'animate-pop-down', side === 'top' ? 'bottom-full mb-1.5 max-h-[65vh] overflow-y-auto' : 'mt-1.5', align === 'right' ? 'right-0' : 'left-0')} style={{ width }}>
           {children(() => setOpen(false))}
         </div>
       )}

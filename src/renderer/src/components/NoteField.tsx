@@ -57,7 +57,7 @@ function spawn(w: number, h: number, anywhere: boolean): Particle {
  * Notes, rests and accidentals drifting up the background. Drawn on one canvas;
  * `count` sets how many. Slows to 30 fps when it is behind other pages and stops in hidden windows.
  */
-export const NoteField = memo(function NoteField({ count, dim, theme, accent }: { count: number; dim: boolean; theme: string; accent: string }) {
+export const NoteField = memo(function NoteField({ count, dim, theme, accent, still }: { count: number; dim: boolean; theme: string; accent: string; still: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const state = useRef<{ particles: Particle[]; dim: boolean }>({ particles: [], dim })
   state.current.dim = dim
@@ -66,7 +66,6 @@ export const NoteField = memo(function NoteField({ count, dim, theme, accent }: 
     const canvas = ref.current
     if (!canvas) return
     const g = canvas.getContext('2d')!
-    const still = document.documentElement.dataset.motion === 'reduce'
     let w = 0, h = 0, dpr = 1
     let art = sprites([rgbVar('accent'), rgbVar('muted')], 2)
     const resize = () => {
@@ -111,12 +110,12 @@ export const NoteField = memo(function NoteField({ count, dim, theme, accent }: 
     }
     const onResize = () => { resize(); draw() }
     window.addEventListener('resize', onResize)
-    const visibility = () => { if (document.hidden) cancelAnimationFrame(raf); else if (!still) { last = performance.now(); raf = requestAnimationFrame(frame) } }
+    const visibility = () => { if (document.hidden) cancelAnimationFrame(raf); else if (!still && count) { last = performance.now(); raf = requestAnimationFrame(frame) } }
     document.addEventListener('visibilitychange', visibility)
-    if (still || !count) draw()
+    if (still || !count || document.hidden) draw()
     else raf = requestAnimationFrame(frame)
     return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', onResize); document.removeEventListener('visibilitychange', visibility) }
-  }, [count, theme, accent])
+  }, [count, theme, accent, still])
 
   return <canvas ref={ref} className="absolute inset-0 w-full h-full" aria-hidden="true" />
 })

@@ -24,7 +24,7 @@ export function useStudioKeys(enabled: boolean, onToggleLoop: () => void): void 
     let fretState: { cursor: ReturnType<typeof useProject.getState>['cursor']; sel: string | null } | null = null
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
-      if (t.closest('input, textarea, select, [contenteditable]')) return
+      if (t.closest('input, textarea, select, [contenteditable], [data-keyboard-menu], [data-context-menu], [data-select-popup]')) return
       const st = useProject.getState()
       const p = st.project
       if (!p) return
