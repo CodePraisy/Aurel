@@ -4,18 +4,20 @@
 
 Aurel separates a recording into instrument stems (vocals, drums, bass, guitar, piano, other) and transcribes each stem into standard notation and guitar tablature. It also gives you a synchronized practice player, a full score editor, and real-time hosting for VST3 instruments and effects on Windows. Projects, audio and AI processing all stay on your machine.
 
-## Download — v0.1.0
+## Download — v0.2.0
 
-- [`Aurel-0.1.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended) · 152 MB
-- [`Aurel-0.1.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation) · 137 MB
-- [`Aurel-0.1.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-macOS-arm64.zip) (Mac with Apple silicon — M1, M2, M3, M4) · 145 MB
-- [`Aurel-0.1.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-macOS-x64.zip) (Mac with an Intel processor) · 155 MB
+- [`Aurel-0.2.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.2.0/Aurel-0.2.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended) · 152 MB
+- [`Aurel-0.2.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.2.0/Aurel-0.2.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation) · 137 MB
+- [`Aurel-0.2.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.2.0/Aurel-0.2.0-macOS-arm64.zip) (Mac with Apple silicon) · 145 MB
+- [`Aurel-0.2.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.2.0/Aurel-0.2.0-macOS-x64.zip) (Mac with an Intel processor) · 155 MB
 
-To check which Mac you have, open  → **About This Mac**. **Chip: Apple M…** means Apple silicon. **Processor: Intel** means Intel.
+[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.2.0)
+
+To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: Apple M…** means Apple silicon. **Processor: Intel** means Intel.
 
 **System requirements**
 
-- Windows 10 or 11 (64-bit), or macOS 12 Monterey or later.
+- Windows 10 or 11 (64-bit), or macOS 13 Ventura or later.
 - About 8 GB of free disk space for the AI transcription engine and its models.
 - An NVIDIA GPU is optional. With one, transcription uses CUDA; without one, it runs on the CPU and is slower.
 
@@ -23,14 +25,14 @@ To check which Mac you have, open  → **About This Mac**. **Chip: Apple M…** 
 
 ### Windows (installer)
 
-1. Download `Aurel-0.1.0-Windows-x64.exe` and run it.
+1. Download `Aurel-0.2.0-Windows-x64.exe` and run it.
 2. If Microsoft Defender SmartScreen shows **"Windows protected your PC"**, select **More info → Run anyway**. The warning appears because the build is not yet code-signed.
 3. Complete the setup wizard; the defaults are fine. During installation, the AI transcription engine is downloaded and configured (one-time, 3–5 GB), so an internet connection is required. If this step is interrupted, Aurel still installs, and you can finish later from **Settings → AI Engine**.
 4. Launch **Aurel** from the Start menu or the desktop shortcut.
 
 ### Windows (portable)
 
-Download `Aurel-0.1.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
+Download `Aurel-0.2.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
 
 ### macOS
 
@@ -53,12 +55,12 @@ Download `Aurel-0.1.0-Windows-x64-Portable.exe` and run it from any folder or a 
 
 - **Import:** MP3, WAV, FLAC, M4A, OGG and video files, by drag-and-drop or file picker. You can also import from a YouTube link, a direct URL, or a MIDI file.
 - **Transcription:** stem separation, note transcription, and tempo, meter and downbeat detection. Results are quantized into editable notation and tablature.
-- **Practice:** speed from 25% to 200% with pitch preserved, saved loops, a gradual tempo trainer, metronome and count-in, transposition, a follow-along cursor, and an audio-vs-MIDI compare mode.
-- **Notation editor:** multi-part scores, tab, drum step grid, chords, articulations and techniques, alternate tunings and capo, and 200-step undo. Enter notes with the keyboard, the mouse, an on-screen piano or fretboard, or a USB MIDI keyboard.
+- **Practice:** speed from 25% to 200% with pitch preserved, saved loops, a gradual tempo trainer, metronome and count-in, transposition, a follow-along cursor, and an **Original / Transcription** playback switch.
+- **Notation editor:** multi-part scores, tab, drum step grid, chords with adjustable arpeggio direction and spacing, articulations and techniques, alternate tunings and capo, and 200-step undo. Enter notes with the keyboard, the mouse, an on-screen piano or fretboard, or a USB MIDI keyboard.
 - **Sound:** sampled instruments with a per-part effects chain. You can add instruments made from your own samples and use them in any part, or in place of a built-in sound. On Windows, installed VST3 instruments and effects (for example Kontakt or Guitar Rig) run in real time with their native editors.
 - **Export:** WAV, MP3, FLAC, MIDI, MusicXML (MuseScore, Sibelius, Finale), PDF and ASCII tab, plus a DAW-ready folder of aligned stems.
 - **Interface:** Dark, Light and Sakura themes.
-- **Updates:** Aurel checks GitHub for a new release when it starts, asks first, then downloads, installs and restarts. You can turn this off in **Settings → About**.
+- **Updates:** Aurel checks for a new release at startup and asks before installing. To check manually or turn off automatic checks, open **Settings → About & limits**.
 
 ---
 
@@ -103,7 +105,7 @@ In **Settings → Instrument sounds → Your instruments**, choose one or more a
 - **MIDI:** input device, channel, which part the keyboard plays, and Write notes or Play only.
 - **Plug-ins:** search folders, rescan, turn plug-ins on or off, and a list of failed plug-ins.
 - **Playback:** count-in, metronome volume, solo follows track selection, and whether reverb and delay ring out after you stop.
-- **About:** automatic update checks on or off, and **Check now**.
+- **About & limits:** installed version, automatic update checks and **Check now**.
 
 ### YouTube import
 
@@ -140,7 +142,7 @@ npm run dist       # Windows installer into release/
 npm run dist:mac   # Mac .zip into release/ (on a Mac)
 ```
 
-To publish a release, set `version` in `package.json`, then run the **Build release downloads** workflow from the Actions tab (or push a tag such as `v0.2.0`). It creates the release if needed, builds the Windows installer, the Windows portable app and both Mac packages, and attaches them. Installed copies of Aurel then offer the update. Update checks use the public GitHub API, so the repository's releases must be public for them to find anything.
+To publish a release, set `version` in `package.json`, then run the **Build release downloads** workflow from the Actions tab (or push a matching tag such as `v0.3.0` for version `0.3.0`). It creates the release if needed, builds the Windows installer, the Windows portable app and both Mac packages, and attaches them. Installed copies of Aurel then offer the update. Update checks use the public GitHub API, so the repository's releases must be public for them to find anything.
 
 To rebuild the VST3 helper (`build/vst-host/aurel-vst-host.exe`), run `powershell -File native/vst-host/build.ps1` with Visual Studio 2022 (C++ workload) and CMake installed. `native/vst-host/test/protocol-test.cjs` tests it against real plug-ins.
 
