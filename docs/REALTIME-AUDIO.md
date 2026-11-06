@@ -1,8 +1,8 @@
 # Aurel real-time audio update
 
-Aurel already supports score editing, audio transcription, and installed Windows VST3 instruments and effects. It opens native plug-in editors, saves their state, and supports default and per-track chains. Today it renders VST3 tracks before playback.
+Aurel already supports score editing, audio transcription, and installed Windows VST3 instruments and effects. It opens native plug-in editors, saves their state, and supports default and per-track chains. The earlier build rendered VST3 tracks before playback. The current Windows source includes a streaming VST3 path. The goals below describe the behavior to verify and complete.
 
-## What needs to be built
+## Real-time audio goals
 
 - Keep plug-ins loaded and process notes and stems in small audio blocks during playback.
 - Use each imported VST3 instrument's own sound and saved preset for note entry, on-screen and MIDI keyboard audition, playback, and export. Show a load error when the plug-in is unavailable.
