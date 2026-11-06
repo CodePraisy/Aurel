@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Palette, Volume2, Cpu, Download, Upload, Keyboard, Info, RefreshCw, Check, Loader2, Speaker, PenLine, Music, Scale, Plug, KeyboardMusic, SlidersHorizontal } from 'lucide-react'
 import { packFor, SOUND_PACKS, type PackStatus } from '@shared/sounds'
-import type { Settings } from '@shared/types'
+import type { Settings, UpdateInfo } from '@shared/types'
 import { useApp } from '@/store/app'
 import { useProject } from '@/store/project'
 import { api } from '@/lib/api'
@@ -10,6 +10,7 @@ import { cx, Slider, Toggle, Progress } from '@/components/ui'
 import { CHORD_SHORTCUT, SHORTCUTS } from './studio/shortcuts'
 import { usePlayer } from './studio/Transport'
 import EffectsSettings from './studio/EffectsSettings'
+import CustomSounds from './settings/CustomSounds'
 import { DeviceFormat, EffectTails, MidiSection, PluginsSection } from './settings/AudioSections'
 
 const SECTIONS = [
@@ -50,7 +51,10 @@ function SoundsSection() {
   return (
     <>
       <h2 className="font-display text-[22px] mb-1">Instrument sounds</h2>
-      <p className="text-muted mb-4 leading-relaxed">Real recorded instruments (Salamander Grand Piano and the MusyngKite General MIDI set). They’re stored on this computer and work offline.</p>
+      <p className="text-muted mb-2 leading-relaxed">Every part plays one of these. All of them are stored on this computer and work offline.</p>
+      <CustomSounds />
+      <h3 className="font-display text-[19px] mt-8 mb-1">Built-in instruments</h3>
+      <p className="text-muted text-[12.5px] mb-3 leading-relaxed">Recorded instruments from the Salamander Grand Piano and the MusyngKite General MIDI set.</p>
       <div className="flex gap-2 mb-3">
         <button className="btn-primary" disabled={busy || !missing.length} onClick={() => dl(missing.map((p) => p.id))}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} {missing.length ? `Download ${missing.length} missing` : 'All sounds installed'}</button>
       </div>
@@ -82,6 +86,24 @@ function TestChordButton() {
     <button className="btn-soft" disabled={!!p.testChordSound} onClick={() => p.previewRandomChord()}>
       {p.testChordSound ? `Playing ${p.testChordSound}` : 'Play chord'}
     </button>
+  )
+}
+
+function UpdatesCard({ s, set }: { s: Settings; set: (p: Partial<Settings>) => void }) {
+  const [state, setState] = useState<{ checking: boolean; text?: string }>({ checking: false })
+  const check = async () => {
+    setState({ checking: true })
+    const u: UpdateInfo = await api.updates.check().catch((e: Error) => ({ available: false, error: e.message, current: api.updates.version() }))
+    if (u.available) { useApp.setState({ update: u }); setState({ checking: false, text: `Version ${u.version} is available.` }) }
+    else setState({ checking: false, text: u.error ?? `You have the latest version (${u.current}).` })
+  }
+  return (
+    <div className="card px-5 py-1 mb-5">
+      <Row title="Check for updates automatically" desc="When Aurel starts, look for a newer release on GitHub and ask before installing it."><Toggle on={s.checkUpdates} onChange={(v) => set({ checkUpdates: v })} /></Row>
+      <Row title="Updates" desc={state.text ?? (s.skippedVersion ? `Skipping version ${s.skippedVersion}.` : 'Updates download, install and restart Aurel for you.')}>
+        <button className="btn-soft" disabled={state.checking} onClick={() => void check()}>{state.checking ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Check now</button>
+      </Row>
+    </div>
   )
 }
 
@@ -290,8 +312,9 @@ export default function SettingsPage({ section }: { section?: string }) {
           )}
           {sec === 'about' && (
             <>
-              <h2 className="font-display text-[22px] mb-1">Aurel 0.1</h2>
+              <h2 className="font-display text-[22px] mb-1">Aurel {api.updates.version()}</h2>
               <p className="text-muted mb-5">Notation-first transcription, composition and practice.</p>
+              <UpdatesCard s={s} set={set} />
               <div className="card p-5 space-y-3 text-[13px] leading-relaxed">
                 <div className="font-medium">What to expect from automatic transcription</div>
                 <ul className="list-disc pl-5 space-y-1.5 text-muted">

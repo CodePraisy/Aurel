@@ -55,9 +55,10 @@ Download `Aurel-0.1.0-Windows-x64-Portable.exe` and run it from any folder or a 
 - **Transcription:** stem separation, note transcription, and tempo, meter and downbeat detection. Results are quantized into editable notation and tablature.
 - **Practice:** speed from 25% to 200% with pitch preserved, saved loops, a gradual tempo trainer, metronome and count-in, transposition, a follow-along cursor, and an audio-vs-MIDI compare mode.
 - **Notation editor:** multi-part scores, tab, drum step grid, chords, articulations and techniques, alternate tunings and capo, and 200-step undo. Enter notes with the keyboard, the mouse, an on-screen piano or fretboard, or a USB MIDI keyboard.
-- **Sound:** sampled instruments with a per-part effects chain. On Windows, installed VST3 instruments and effects (for example Kontakt or Guitar Rig) run in real time with their native editors.
+- **Sound:** sampled instruments with a per-part effects chain. You can add instruments made from your own samples and use them in any part, or in place of a built-in sound. On Windows, installed VST3 instruments and effects (for example Kontakt or Guitar Rig) run in real time with their native editors.
 - **Export:** WAV, MP3, FLAC, MIDI, MusicXML (MuseScore, Sibelius, Finale), PDF and ASCII tab, plus a DAW-ready folder of aligned stems.
 - **Interface:** Dark, Light and Sakura themes.
+- **Updates:** Aurel checks GitHub for a new release when it starts, asks first, then downloads, installs and restarts. You can turn this off in **Settings → About**.
 
 ---
 
@@ -92,12 +93,17 @@ Aurel uses the VST3 plug-ins already installed on your computer. In **Settings �
 
 Plug in a USB MIDI keyboard, or pair a Bluetooth one in Windows; it is picked up automatically. Notes sound for as long as you hold the key or the sustain pedal. In **Write** mode they are added to the score at the cursor, and keys pressed together become a chord. Pick the device, channel and which part it plays in **Settings → MIDI**.
 
+### Your own instruments
+
+In **Settings → Instrument sounds → Your instruments**, choose one or more audio files (WAV, AIFF, FLAC, MP3, OGG or M4A). Aurel reads each sample's root note from its file name, such as `Piano C4.wav` or `Bass_A#2.wav`, and you can change it. Notes between samples are re-pitched from the nearest one. Pick the instrument in any part's **Sound & effects**, or set **Use everywhere instead of** to replace a built-in sound in every piece.
+
 ### Settings
 
 - **Audio device:** output, sample rate, buffer size and the measured latency.
 - **MIDI:** input device, channel, which part the keyboard plays, and Write notes or Play only.
 - **Plug-ins:** search folders, rescan, turn plug-ins on or off, and a list of failed plug-ins.
 - **Playback:** count-in, metronome volume, solo follows track selection, and whether reverb and delay ring out after you stop.
+- **About:** automatic update checks on or off, and **Check now**.
 
 ### YouTube import
 
@@ -134,7 +140,7 @@ npm run dist       # Windows installer into release/
 npm run dist:mac   # Mac .zip into release/ (on a Mac)
 ```
 
-The **Build release downloads** GitHub Actions workflow builds the Windows installer, the Windows portable app, and both Mac packages, then attaches them to the release.
+To publish a release, set `version` in `package.json`, then run the **Build release downloads** workflow from the Actions tab (or push a tag such as `v0.2.0`). It creates the release if needed, builds the Windows installer, the Windows portable app and both Mac packages, and attaches them. Installed copies of Aurel then offer the update. Update checks use the public GitHub API, so the repository's releases must be public for them to find anything.
 
 To rebuild the VST3 helper (`build/vst-host/aurel-vst-host.exe`), run `powershell -File native/vst-host/build.ps1` with Visual Studio 2022 (C++ workload) and CMake installed. `native/vst-host/test/protocol-test.cjs` tests it against real plug-ins.
 

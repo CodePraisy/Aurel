@@ -1,4 +1,4 @@
-import type { Part, Project } from '@shared/types'
+import type { Listen, Part, Project } from '@shared/types'
 import { PPQ } from '@shared/types'
 import { flattenPart, tempoMap, scoreEndTick, type PlayNote, type TempoMap } from '@/music/score'
 import { beatTicks, measureTicks } from '@/music/theory'
@@ -6,8 +6,9 @@ import { playNote, partInsert, click, warmup, DEFAULT_SOUND, SOUNDS, type SoundI
 import { api } from '@/lib/api'
 import { buildChain } from './fx'
 import { packReady, onPacksChanged, loadPack, resetMissing } from './samples'
-import { newFx, orderChain, type FxSlot, type StemStream, type VstEvent, type VstFailure, type VstFxSlot, type VstSlotSpec } from '@shared/sounds'
+import { customId, newFx, orderChain, type CustomSound, type FxSlot, type StemStream, type VstEvent, type VstFailure, type VstFxSlot, type VstSlotSpec } from '@shared/sounds'
 import { NativeTrack } from './native'
+import { customSound, setCustomSounds, swapFor } from './custom'
 
 /** Effects used when a part has never had its chain edited. */
 export function defaultFx(sound: SoundId): FxSlot[] {
@@ -35,7 +36,11 @@ export const fxFor = (p: Part): FxSlot[] => {
   if (!chain) { chain = defaultFx(sound); factoryFx.set(sound, chain) }
   return chain
 }
-export const soundFor = (p: Part): SoundId => (p.sound as SoundId) || DEFAULT_SOUND[p.kind]
+export const soundFor = (p: Part): SoundId => {
+  const chosen = (p.sound as SoundId) || DEFAULT_SOUND[p.kind]
+  if (customId(chosen)) return customSound(chosen) ? chosen : DEFAULT_SOUND[p.kind] // a deleted instrument falls back to the default
+  return (swapFor(chosen) as SoundId | null) ?? chosen // "use my instrument instead of …" from Settings
+}
 
 /**
  * How a part is heard:
@@ -84,6 +89,7 @@ export interface PlayerOptions {
   compare: string | null // part id played as audio (left) + MIDI (right)
   mix: { on: boolean; volume: number } // original full mix
   trainer: { on: boolean; from: number; to: number; step: number }
+  listen: Listen
 }
 
 export interface TrackStatus { loading: boolean; error: string | null; failures: VstFailure[]; latency: number; crashed: string[] }
@@ -141,7 +147,7 @@ class Player {
   countingIn = false
   opts: PlayerOptions = {
     speed: 1, loop: null, loopOn: false, metronome: false, metronomeVolume: 0.6, countIn: 0, transpose: 0, compare: null,
-    mix: { on: true, volume: 0.9 }, trainer: { on: false, from: 0.6, to: 1, step: 0.05 }
+    mix: { on: true, volume: 0.9 }, trainer: { on: false, from: 0.6, to: 1, step: 0.05 }, listen: 'parts'
   }
   private listeners = new Set<Listener>()
   private eventListeners = new Set<(e: VstEvent & { partName?: string }) => void>()
@@ -161,7 +167,11 @@ class Player {
   private effectTails = true
 
   /** Apply audio device settings; recreates the audio context if the format changed. */
-  configure(o: { sampleRate?: number; bufferSize?: number; sinkId?: string; volume?: number; fxDefaults?: Record<string, FxSlot[]>; effectTails?: boolean }): void {
+  configure(o: { sampleRate?: number; bufferSize?: number; sinkId?: string; volume?: number; fxDefaults?: Record<string, FxSlot[]>; effectTails?: boolean; customSounds?: CustomSound[]; soundSwaps?: Record<string, string> }): void {
+    if (o.customSounds && setCustomSounds(o.customSounds, o.soundSwaps ?? {}) && this.project) {
+      this.setProject(this.project) // instruments may sound different now
+      this.emit()
+    }
     if (o.fxDefaults && o.fxDefaults !== instrumentFxDefaults) { instrumentFxDefaults = o.fxDefaults; if (this.ctx && this.project) this.syncBuses() }
     if (o.effectTails !== undefined) this.effectTails = o.effectTails
     if (o.volume !== undefined) { this.masterVol = o.volume; if (this.ctx) this.master.gain.setTargetAtTime(o.volume, this.ctx.currentTime, 0.02) }
@@ -267,6 +277,7 @@ class Player {
   onHostEvent(fn: (e: VstEvent & { partName?: string }) => void): () => void { this.eventListeners.add(fn); return () => this.eventListeners.delete(fn) }
 
   setOptions(patch: Partial<PlayerOptions>): void {
+    const listenChanged = patch.listen !== undefined && patch.listen !== this.opts.listen
     const speedChanged = patch.speed !== undefined && patch.speed !== this.opts.speed
     const transposeChanged = patch.transpose !== undefined && patch.transpose !== this.opts.transpose
     this.opts = { ...this.opts, ...patch }
@@ -276,6 +287,10 @@ class Player {
       this.fxError = error.message
       this.emit()
     })
+    if (listenChanged && this.ctx && this.project) {
+      this.syncBuses()
+      if (this.state === 'playing') this.restartAt(this.getTick())
+    }
     this.applyMix()
     this.emit()
   }
@@ -299,6 +314,7 @@ class Player {
       this.opts.loop = null
       this.opts.loopOn = false
       this.opts.speed = p.practice.speed || 1
+      this.opts.listen = p.audio ? p.practice.listen ?? 'parts' : 'parts'
       this.opts.transpose = 0
       this.shifted.clear()
     }
@@ -344,7 +360,9 @@ class Player {
     return lo
   }
 
-  route(part: Part): Route { return routeFor(part, !!this.project?.audio) }
+  /** The part as it plays right now: the Transcription switch makes every part play its notes. */
+  private effective(part: Part): Part { return this.opts.listen === 'transcription' && part.playback !== 'midi' ? { ...part, playback: 'midi' } : part }
+  route(part: Part): Route { return routeFor(this.effective(part), !!this.project?.audio) }
 
   /** Plug-in state for the part, for the parts list and the sound rack. */
   status(partId: string): TrackStatus | null {
@@ -520,18 +538,19 @@ class Player {
     if (!this.ctx || !this.project) return
     const t = this.ctx.currentTime
     const parts = this.project.score.parts
+    const original = this.opts.listen === 'original' && !!this.project.audio
     for (const part of parts) {
       const b = this.buses.get(part.id)
       const tr = this.tracks.get(part.id)
       const route = this.route(part)
       const comparing = this.opts.compare === part.id && !!tr
-      const notesOn = route === 'stemfx' || part.playback === 'midi' || !part.stem || comparing
+      const notesOn = !original && (route === 'stemfx' || this.effective(part).playback === 'midi' || !part.stem || comparing)
       if (b) {
         b.gain.gain.setTargetAtTime(this.audible(part) && notesOn ? part.volume : 0, t, 0.015)
         b.pan.pan.setTargetAtTime(comparing ? 0.9 : part.pan, t, 0.015)
       }
       if (tr) {
-        const audioOn = this.audible(part) && (route === 'stem' || comparing)
+        const audioOn = !original && this.audible(part) && (route === 'stem' || comparing)
         tr.gain.gain.setTargetAtTime(audioOn ? part.volume : 0, t, 0.015)
         tr.pan.pan.setTargetAtTime(comparing ? -0.9 : part.pan, t, 0.015)
       }
@@ -539,7 +558,8 @@ class Player {
     const mix = this.tracks.get('__mix')
     if (mix) {
       const anySolo = parts.some((x) => x.solo)
-      mix.gain.gain.setTargetAtTime(this.opts.mix.on && !anySolo ? this.opts.mix.volume : 0, t, 0.015)
+      const mixOn = original || (this.opts.listen === 'parts' && this.opts.mix.on && !anySolo)
+      mix.gain.gain.setTargetAtTime(mixOn ? this.opts.mix.volume : 0, t, 0.015)
     }
     this.metroBus.gain.setTargetAtTime(this.opts.metronomeVolume, t, 0.01)
   }
@@ -715,9 +735,10 @@ class Player {
     const s = this.project.score
     const semis = this.opts.transpose
     const parts = new Map(s.parts.map((part) => [part.id, part]))
+    const originalOnly = this.opts.listen === 'original' && !!this.project.audio
     while (this.noteIdx < this.notes.length && this.notes[this.noteIdx].tick < toTick) {
       const n = this.notes[this.noteIdx++]
-      if (n.tick < this.schedTick) continue
+      if (n.tick < this.schedTick || originalOnly) continue
       const part = parts.get(n.partId)
       if (!part) continue
       const route = this.route(part)
@@ -858,6 +879,14 @@ class Player {
     if (route === 'capture' && track && this.state !== 'playing') track.capture(this.captureDelay(track))
     const v = playNote(ctx, dest, sound, p, ctx.currentTime + 0.005, 30, velocity)
     return { stop: () => v.stop(ctx.currentTime) }
+  }
+
+  /** Hear any sound on its own (Settings → Instrument sounds). */
+  async previewSound(sound: SoundId, pitches: number[]): Promise<void> {
+    const ctx = this.ensure()
+    await loadPack(sound)
+    const input = partInsert(ctx, sound, this.master)
+    pitches.forEach((p, i) => playNote(ctx, input, sound, p, ctx.currentTime + 0.03 + i * 0.12, 1.2, 92))
   }
 
   /** Audition a single note of fixed length (note entry, fretboard, MIDI keyboard). */

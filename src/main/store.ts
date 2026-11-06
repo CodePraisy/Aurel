@@ -50,6 +50,7 @@ export const paths = {
   get engineTools() { return join(this.engineInstallRoot, 'Tools') },
   get venv() { return join(this.engineInstallRoot, 'engine-venv') },
   get sounds() { return join(app.getPath('userData'), 'Sounds') },
+  get customSounds() { return join(app.getPath('userData'), 'Custom Sounds') },
   get tools() { return join(app.getPath('userData'), 'Tools') },
   get venvPython() { return enginePythonAt(this.engineInstallRoot) },
   get ffmpeg(): string {
@@ -95,6 +96,10 @@ export const DEFAULT_SETTINGS: Settings = {
   effectTails: true,
   countInOn: false,
   vstDisabled: [],
+  customSounds: [],
+  soundSwaps: {},
+  checkUpdates: true,
+  skippedVersion: '',
   masterVolume: 0.9,
   autoScroll: true,
   soloFollowsView: true,

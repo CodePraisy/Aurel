@@ -4,7 +4,7 @@ import type { InstrumentKind, Part, Project } from '@shared/types'
 import { useProject } from '@/store/project'
 import { useApp } from '@/store/app'
 import { player, soundFor } from '@/audio/player'
-import { SOUNDS } from '@/audio/synth'
+import { SOUNDS, allSounds, soundLabel } from '@/audio/synth'
 import { INSTRUMENTS, TUNINGS, isFretted, midiName } from '@/music/theory'
 import { cx, Slider, Modal, Popover, MenuItem, Confidence } from '@/components/ui'
 import { openContextMenu, type MenuEntry } from '@/components/menu'
@@ -41,6 +41,16 @@ function PluginBadge({ part }: { part: Part }) {
       <AlertTriangle size={11} /> Plug-in problem
     </button>
   )
+}
+
+/** A part's own Audio/MIDI choice; it hands control back from the bottom-bar switch. */
+function setPartPlayback(id: string, playback: Part['playback']): void {
+  const st = useProject.getState()
+  if (player.opts.listen !== 'parts') {
+    player.setOptions({ listen: 'parts' })
+    st.patchProject((p) => { p.practice.listen = 'parts' })
+  }
+  useProject.getState().updatePart(id, { playback })
 }
 
 function usePlayerOpts() {
@@ -185,7 +195,7 @@ export default function PartsPanel({ project }: { project: Project }) {
                     <div className="text-[13px] font-medium truncate cursor-default" onDoubleClick={() => setRenaming(p.id)}>{p.name}</div>
                   )}
                   <div className="flex items-center gap-1.5 text-[11px] text-faint">
-                    <span className="truncate">{p.vstInstrument?.plugin.name ?? SOUNDS.find((s) => s.id === soundFor(p))?.label}</span>
+                    <span className="truncate">{p.vstInstrument?.plugin.name ?? soundLabel(soundFor(p))}</span>
                     <PluginBadge part={p} />
                     {p.classification && <Confidence value={p.classification.confidence} />}
                   </div>
@@ -198,8 +208,8 @@ export default function PartsPanel({ project }: { project: Project }) {
                 <Slider value={p.volume} min={0} max={1} onChange={(v) => st.updatePart(p.id, { volume: v })} title="Volume" />
                 {p.stem && (
                   <div className="seg !p-[1px] shrink-0">
-                    <button className={cx('!h-5 !px-1.5 !text-[10.5px]', p.playback === 'audio' && 'on')} title="Play the AI-isolated recording" onClick={() => st.updatePart(p.id, { playback: 'audio' })}>Audio</button>
-                    <button className={cx('!h-5 !px-1.5 !text-[10.5px]', p.playback === 'midi' && 'on')} title="Play the transcribed notes" onClick={() => st.updatePart(p.id, { playback: 'midi' })}>MIDI</button>
+                    <button className={cx('!h-5 !px-1.5 !text-[10.5px]', opts.listen === 'parts' && p.playback === 'audio' && 'on')} title={opts.listen === 'parts' ? 'Play the AI-isolated recording' : 'The Original / Transcription switch in the bottom bar is deciding. Click to choose per part again.'} onClick={() => setPartPlayback(p.id, 'audio')}>Audio</button>
+                    <button className={cx('!h-5 !px-1.5 !text-[10.5px]', opts.listen === 'parts' && p.playback === 'midi' && 'on')} title={opts.listen === 'parts' ? 'Play the transcribed notes' : 'The Original / Transcription switch in the bottom bar is deciding. Click to choose per part again.'} onClick={() => setPartPlayback(p.id, 'midi')}>MIDI</button>
                   </div>
                 )}
               </div>
@@ -231,8 +241,8 @@ function PartMenu({ part, onRename, compare }: { part: Part; onRename: () => voi
             close()
           }}>{INSTRUMENTS[k].label}{k === part.kind ? ' ✓' : ''}</MenuItem>
         ))}</div>
-        if (sub === 'sound') return <div className="max-h-[320px] overflow-auto">{SOUNDS.map((s) => (
-          <MenuItem key={s.id} onClick={() => { st.updatePart(part.id, { sound: s.id, vstInstrument: undefined }); player.preview({ ...part, sound: s.id, vstInstrument: undefined }, part.kind === 'drums' ? 38 : part.clef === 'bass' ? 43 : 64); close() }} hint={s.for.includes(part.kind) ? 'suggested' : ''}>{s.label}{!part.vstInstrument && soundFor(part) === s.id ? ' ✓' : ''}</MenuItem>
+        if (sub === 'sound') return <div className="max-h-[320px] overflow-auto">{allSounds().map((s) => (
+          <MenuItem key={s.id} onClick={() => { st.updatePart(part.id, { sound: s.id, vstInstrument: undefined }); player.preview({ ...part, sound: s.id, vstInstrument: undefined }, part.kind === 'drums' ? 38 : part.clef === 'bass' ? 43 : 64); close() }} hint={s.custom ? 'yours' : SOUNDS.find((b) => b.id === s.id)?.for.includes(part.kind) ? 'suggested' : ''}>{s.label}{!part.vstInstrument && soundFor(part) === s.id ? ' ✓' : ''}</MenuItem>
         ))}</div>
         if (sub === 'tuning') return (
           <div className="p-1">

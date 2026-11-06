@@ -1,13 +1,14 @@
 import { create } from 'zustand'
-import type { Collection, EngineAnalysis, EngineStatus, JobUpdate, LibraryEntry, Project, Settings } from '@shared/types'
+import type { Collection, EngineAnalysis, EngineStatus, JobUpdate, LibraryEntry, Project, Settings, UpdateInfo } from '@shared/types'
 import { api } from '@/lib/api'
 import { analysisToScore } from '@/music/quantize'
 import { player } from '@/audio/player'
+import { useProject } from './project'
 
 export type Route = { name: 'home' } | { name: 'library' } | { name: 'settings'; section?: string } | { name: 'studio'; projectId: string }
 
 export interface Toast { id: number; text: string; kind: 'info' | 'ok' | 'error'; action?: { label: string; run: () => void } }
-export interface JobInfo extends JobUpdate { label: string; projectId?: string; logs: string[] }
+export interface JobInfo extends JobUpdate { label: string; projectId?: string; logs: string[]; audioSynced?: boolean }
 
 interface AppState {
   route: Route
@@ -19,6 +20,7 @@ interface AppState {
   toasts: Toast[]
   dialog: null | 'new' | 'youtube' | 'url'
   projectRevision: Record<string, number> // bumps when a project changes outside the editor
+  update: UpdateInfo | null // a newer release to offer
   go(r: Route): void
   setDialog(d: AppState['dialog']): void
   loadSettings(): Promise<void>
@@ -44,6 +46,7 @@ export const useApp = create<AppState>((set, get) => ({
   toasts: [],
   dialog: null,
   projectRevision: {},
+  update: null,
   go: (route) => set({ route }),
   setDialog: (dialog) => set({ dialog }),
   loadSettings: async () => set({ settings: await api.settings.get() }),
@@ -88,6 +91,14 @@ export const useApp = create<AppState>((set, get) => ({
 }))
 
 /** Turn the engine's analysis into an editable score and save it. */
+async function syncAudio(projectId: string): Promise<void> {
+  const open = useProject.getState().project
+  if (open?.id !== projectId) return
+  const disk = await api.project.load(projectId)
+  if (!disk.audio || useProject.getState().project?.id !== projectId) return
+  useProject.getState().patchProject((p) => { p.audio = disk.audio })
+}
+
 export async function applyAnalysis(projectId: string): Promise<void> {
   const project: Project = await api.project.load(projectId)
   const a = JSON.parse(await api.project.readText(projectId, 'analysis.json')) as EngineAnalysis
@@ -108,6 +119,11 @@ api.jobs.onUpdate(async (u) => {
   const st = useApp.getState()
   const prev = st.jobs[u.jobId]
   const info: JobInfo = { ...(prev ?? { label: u.kind, logs: [] }), ...u, logs: u.log ? [...(prev?.logs ?? []), u.log].slice(-300) : prev?.logs ?? [] }
+  // The engine may have trimmed leading silence before starting: give an open piece the new timing.
+  if (u.kind === 'process' && !info.audioSynced && info.projectId && u.pct >= 0) {
+    info.audioSynced = true
+    void syncAudio(info.projectId)
+  }
   useApp.setState((s) => ({ jobs: { ...s.jobs, [u.jobId]: info } }))
   if (!u.done) return
   setTimeout(() => useApp.setState((s) => { const j = { ...s.jobs }; delete j[u.jobId]; return { jobs: j } }), u.error ? 15000 : 2500)

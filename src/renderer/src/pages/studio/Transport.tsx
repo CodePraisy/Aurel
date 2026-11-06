@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Play, Pause, Square, Repeat, Timer, Gauge, Music4, TrendingUp, BookmarkPlus, Trash2, SkipBack, ArrowUpDown, Loader2 } from 'lucide-react'
-import type { Project } from '@shared/types'
+import type { Listen, Project } from '@shared/types'
 import { player } from '@/audio/player'
 import { useProject } from '@/store/project'
 import { useApp } from '@/store/app'
@@ -16,6 +16,22 @@ export function toggleLoop(): void {
   if (o.loopOn && (!st.range || (o.loop && o.loop.from === st.range.from && o.loop.to === st.range.to))) { player.setOptions({ loopOn: false }); return }
   if (!r) return
   player.setOptions({ loop: r, loopOn: true })
+}
+
+/** Hear the original recording or the transcription, for every part at once. */
+function ListenSwitch() {
+  const o = usePlayer().opts
+  const set = (listen: Listen) => {
+    const next = o.listen === listen ? 'parts' : listen // clicking the lit side again goes back to each part's own setting
+    player.setOptions({ listen: next })
+    useProject.getState().patchProject((p) => { p.practice.listen = next })
+  }
+  return (
+    <div className="seg mr-1" role="group" aria-label="Listen to" title={o.listen === 'parts' ? 'Each part plays its own choice (set on the part). Pick one to switch everything.' : 'Click again to go back to each part’s own setting'}>
+      <button className={cx(o.listen === 'original' && 'on')} aria-pressed={o.listen === 'original'} onClick={() => set('original')}>Original</button>
+      <button className={cx(o.listen === 'transcription' && 'on')} aria-pressed={o.listen === 'transcription'} onClick={() => set('transcription')}>Transcription</button>
+    </div>
+  )
 }
 
 export function usePlayer() {
@@ -150,6 +166,7 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
             </div>
           )}
         </Popover>
+        {project.audio && project.score.parts.length > 0 && <ListenSwitch />}
         <button className={cx('btn-ghost !px-2', o.metronome && '!text-accent !bg-accent/10')} aria-pressed={o.metronome} title="Toggle metronome (M)" onClick={() => player.setOptions({ metronome: !o.metronome })}><Music4 size={16} /> Metronome</button>
         <button className={cx('icon-btn', o.countIn > 0 && 'on')} aria-pressed={o.countIn > 0} title={o.countIn ? `Count-in: ${o.countIn} bar${o.countIn > 1 ? 's' : ''} (click to turn off)` : 'Count-in'} onClick={() => void useApp.getState().updateSettings({ countInOn: !o.countIn })}><Timer size={16} /></button>
         <button className={cx('btn-ghost !px-2 ml-1 tabular-nums', o.transpose !== 0 && '!text-accent !bg-accent/10')} aria-label="Transpose playback" title="Transpose playback (semitones)" onClick={onTranspose}>

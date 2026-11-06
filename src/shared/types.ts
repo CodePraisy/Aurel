@@ -1,4 +1,4 @@
-import type { FxSlot, VstConfiguration } from './sounds'
+import type { CustomSound, FxSlot, VstConfiguration } from './sounds'
 
 // Shared data model for Aurel. The Score is the single source of truth for
 // imported (AI-transcribed) songs and original compositions alike.
@@ -14,7 +14,8 @@ export type Clef = 'treble' | 'bass' | 'treble8' | 'percussion'
 export type Articulation = 'staccato' | 'accent' | 'tenuto' | 'marcato' | 'fermata'
 export type Technique = 'bend' | 'slide' | 'hammer' | 'palmMute' | 'harmonic' | 'vibrato'
 export type Dynamic = 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff'
-export interface Arpeggio { direction: 'up' | 'down'; delayMs: number }
+/** Rolled chord. `beats` is the gap between successive notes, in beats (quarter notes). */
+export interface Arpeggio { direction: 'up' | 'down'; beats?: number; /** older projects: gap in milliseconds */ delayMs?: number }
 
 export interface NoteHead {
   pitch: number // MIDI pitch (sounding)
@@ -78,6 +79,9 @@ export interface Score {
   parts: Part[]
 }
 
+/** What you hear: the original recording, the transcribed notes, or each part's own choice. */
+export type Listen = 'original' | 'transcription' | 'parts'
+
 export interface PracticeLoop { id: string; name: string; from: number; to: number }
 
 export interface ProjectAudio {
@@ -85,6 +89,7 @@ export interface ProjectAudio {
   playback?: string // compressed copy used for streaming playback
   duration: number // seconds
   offset: number // seconds of audio that correspond to tick 0
+  trimmed?: number // seconds of leading silence removed from the original file
   sourceUrl?: string
   youtube?: YouTubeMeta
 }
@@ -113,7 +118,7 @@ export interface Project {
   score: Score
   audio?: ProjectAudio
   analysis?: AnalysisInfo
-  practice: { loops: PracticeLoop[]; speed: number }
+  practice: { loops: PracticeLoop[]; speed: number; listen?: Listen }
   view?: { mode: ViewMode; zoom: number; part: string | 'all' }
 }
 
@@ -168,9 +173,20 @@ export interface EngineStatus {
   message?: string
 }
 
+export interface UpdateInfo {
+  current: string
+  available: boolean
+  version?: string
+  notes?: string
+  page?: string
+  asset?: { name: string; size: number; url: string }
+  canInstall?: boolean // false: the update has to be downloaded by hand from `page`
+  error?: string
+}
+
 export interface JobUpdate {
   jobId: string
-  kind: 'import' | 'youtube' | 'process' | 'install' | 'export' | 'sounds' | 'tools'
+  kind: 'import' | 'youtube' | 'process' | 'install' | 'export' | 'sounds' | 'tools' | 'update'
   stage: string
   pct: number // 0..1, -1 = indeterminate
   message?: string
@@ -208,6 +224,10 @@ export interface Settings {
   effectTails: boolean // let reverb and delay ring out after stopping
   countInOn: boolean
   vstDisabled: string[] // lower-cased module paths the user switched off
+  customSounds: CustomSound[]
+  soundSwaps: Record<string, string> // built-in sound id -> custom sound id used everywhere instead
+  checkUpdates: boolean // look for a new version on GitHub at start-up
+  skippedVersion: string // a version the user chose to skip
   masterVolume: number
   autoScroll: boolean
   soloFollowsView: boolean

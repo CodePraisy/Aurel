@@ -10,7 +10,7 @@ import { itemMenu, createMenu, renameProject, type LibraryActions } from './libr
 type Filter = 'all' | 'fav' | 'recent' | 'transcription' | 'composition' | `c:${string}`
 
 export default function Library() {
-  const { library, collections, refreshLibrary, go, toast } = useApp()
+  const { library, collections, refreshLibrary, go, toast, jobs } = useApp()
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [sort, setSort] = useState<'updated' | 'title' | 'created'>('updated')
@@ -43,6 +43,8 @@ export default function Library() {
     if (e.kind === 'composition') return null
     const m: Record<string, [string, string]> = { done: ['Transcribed', 'text-ok bg-ok/10'], running: ['Processing…', 'text-accent bg-accent/10'], failed: ['Failed', 'text-bad bg-bad/10'], none: ['Audio only', ''], cancelled: ['Audio only', ''], queued: ['Queued', ''] }
     const [t, c] = m[e.status] ?? m.none
+    const job = Object.values(jobs).find((j) => j.projectId === e.id && j.kind === 'process' && !j.done)
+    if (job && job.pct >= 0) return <span className={cx('chip tabular-nums', m.running[1])}>Transcribing {Math.floor(job.pct * 100)}%</span>
     return <span className={cx('chip', c)}>{t}</span>
   }
 

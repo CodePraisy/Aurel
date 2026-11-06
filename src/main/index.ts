@@ -13,8 +13,9 @@ import { importAudioJob, importUrlJob, convertWav, newId, AUDIO_EXT, pitchShift 
 import { guessTempo } from './analyze'
 import { checkYouTube, acquireYouTubeJob } from './youtube'
 import { engineStatus, installEngineJob, processJob } from './engine'
-import { packStatus, downloadPacksJob } from './sounds'
+import { packStatus, downloadPacksJob, addCustomSound, removeCustomSound } from './sounds'
 import { installYtDlp } from './tools'
+import { checkForUpdate, installUpdate } from './updater'
 import { SOUND_PACKS } from '@shared/sounds'
 import {
   clearVstFailures, closeAllTracks, closeTrack, editTrackPlugin, openTrack, pluginParameters, prepareStemStream, renderTrack, scanVst,
@@ -70,12 +71,15 @@ function registerProtocol(): void {
   protocol.handle('aurel', async (req) => {
     const u = new URL(req.url)
     const [kind, id, ...rest] = [u.hostname, ...u.pathname.split('/').filter(Boolean)]
-    if ((kind !== 'p' && kind !== 's') || !id) return new Response('Not found', { status: 404 })
+    if ((kind !== 'p' && kind !== 's' && kind !== 'c') || !id) return new Response('Not found', { status: 404 })
     let file: string
     try {
       if (kind === 's') {
         if (!/^[\w-]+$/.test(id) || rest.length !== 1 || !/^[\w-]+\.mp3$/.test(rest[0])) throw new Error('bad')
         file = join(paths.sounds, id, rest[0])
+      } else if (kind === 'c') {
+        if (!/^[\w-]+$/.test(id) || rest.length !== 1 || !/^[\w-]+\.wav$/.test(rest[0])) throw new Error('bad')
+        file = join(paths.customSounds, id, rest[0])
       } else file = paths.inProject(id, decodeURIComponent(rest.join('/')))
     } catch { return new Response('Forbidden', { status: 403 }) }
     if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) return new Response('Not found', { status: 404 })
@@ -220,12 +224,21 @@ function registerIpc(): void {
 
   h('sounds:status', () => packStatus())
   h('sounds:download', (_e, ids: string[]) => ({ jobId: startJob('sounds', (ctx) => downloadPacksJob(ctx, ids)) }))
+  h('sounds:pickSamples', async () => {
+    const r = await dialog.showOpenDialog(main!, { title: 'Choose samples for your instrument', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Audio', extensions: ['wav', 'aif', 'aiff', 'flac', 'mp3', 'ogg', 'm4a'] }] })
+    return r.canceled ? [] : r.filePaths
+  })
+  h('sounds:addCustom', (_e, name: string, files: string[], into?: string) => addCustomSound(name, files, into))
+  h('sounds:removeCustom', (_e, id: string) => removeCustomSound(id))
   h('setup:run', () => ({ jobId: startJob('tools', async (ctx) => {
     await downloadPacksJob(ctx, SOUND_PACKS.map((p) => p.id))
     try { await installYtDlp(ctx) } catch { /* YouTube tools are retried on first use */ }
     return packStatus()
   }) }))
 
+  h('updates:check', () => checkForUpdate())
+  h('updates:install', () => ({ jobId: startJob('update', installUpdate) }))
+  ipcMain.on('updates:version', (e) => { e.returnValue = app.getVersion() })
   h('engine:status', (_e, force?: boolean) => engineStatus(!!force))
   h('engine:install', () => ({ jobId: startJob('install', (ctx) => installEngineJob(ctx)) }))
   h('engine:process', (_e, id: string) => ({ jobId: startJob('process', (ctx) => processJob(ctx, id)) }))

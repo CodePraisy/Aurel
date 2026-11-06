@@ -5,6 +5,7 @@ import type { EngineStatus } from '@shared/types'
 import { DEFAULT_SETTINGS, ENGINE_READY_FILE, enginePythonAt, getSettings, paths, loadProjectFile, saveProjectFile, writeAtomic } from './store'
 import { installUv, uvEnv } from './tools'
 import type { JobCtx } from './jobs'
+import { computePeaks, trimLeadingSilence } from './media'
 
 interface Py { cmd: string; pre: string[] }
 
@@ -120,6 +121,21 @@ export async function processJob(ctx: JobCtx, projectId: string): Promise<{ anal
     if (!p) return
     p.analysis = { ...(p.analysis ?? { status }), status, error }
     saveProjectFile(p)
+  }
+  // Songs imported before silence trimming: remove the leading gap now, so the transcription starts with the music.
+  if (project.audio.trimmed === undefined) {
+    const cut = trimLeadingSilence(join(dir, project.audio.original))
+    const p = loadProjectFile(projectId)
+    if (p?.audio) {
+      p.audio.trimmed = cut
+      if (cut > 0) {
+        p.audio.duration = Math.max(0, p.audio.duration - cut)
+        p.audio.offset = Math.max(0, p.audio.offset - cut)
+        writeAtomic(join(dir, 'peaks.json'), JSON.stringify(computePeaks(join(dir, p.audio.original))))
+        fs.rmSync(join(dir, 'cache'), { recursive: true, force: true }) // pitch-shifted and streamed copies of the old file
+      }
+      saveProjectFile(p)
+    }
   }
   setStatus('running')
   let result: string | null = null
