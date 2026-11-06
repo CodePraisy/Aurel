@@ -1,59 +1,63 @@
 # Aurel
 
-**Turn any song into sheet music and guitar tab, then practice it, edit it, or write your own.**
+**Desktop studio for AI music transcription, notation and practice.**
 
-Aurel listens to a song, separates the instruments (vocals, drums, bass, guitar, piano), writes down the notes for each one, and lets you play along at any speed. You can also start from a blank page and compose.
+Aurel separates a recording into instrument stems (vocals, drums, bass, guitar, piano, other) and transcribes each stem into standard notation and guitar tablature. It also gives you a synchronized practice player, a full score editor, and real-time hosting for VST3 instruments and effects on Windows. Projects, audio and AI processing all stay on your machine.
 
-## Download
+## Download — v0.1.0
 
-| Your computer | Download |
-|---|---|
-| **Windows 10 or 11** (most people) | [**Aurel for Windows — installer**](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-Windows-x64.exe) (152 MB) |
-| Windows, without installing | [Aurel for Windows — portable](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-Windows-x64-Portable.exe) (137 MB) — runs from any folder or a USB stick |
-| **Mac with Apple silicon** (M1, M2, M3, M4) | [**Aurel for Mac — Apple silicon**](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-macOS-arm64.zip) (145 MB) |
-| Mac with an Intel processor | [Aurel for Mac — Intel](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-macOS-x64.zip) (155 MB) |
+- [`Aurel-0.1.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended) · 152 MB
+- [`Aurel-0.1.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation) · 137 MB
+- [`Aurel-0.1.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-macOS-arm64.zip) (Mac with Apple silicon — M1, M2, M3, M4) · 145 MB
+- [`Aurel-0.1.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.1.0/Aurel-0.1.0-macOS-x64.zip) (Mac with an Intel processor) · 155 MB
 
-Not sure which Mac you have? Click the Apple menu  → **About This Mac**. If it says **Chip: Apple M…**, choose Apple silicon. If it says **Processor: Intel**, choose Intel.
+To check which Mac you have, open  → **About This Mac**. **Chip: Apple M…** means Apple silicon. **Processor: Intel** means Intel.
 
-## Install
+**System requirements**
 
-### Windows
+- Windows 10 or 11 (64-bit), or macOS 12 Monterey or later.
+- About 8 GB of free disk space for the AI transcription engine and its models.
+- An NVIDIA GPU is optional. With one, transcription uses CUDA; without one, it runs on the CPU and is slower.
 
-1. Click the Windows installer link above. Your browser downloads `Aurel-0.1.0-Windows-x64.exe`.
-2. Open the downloaded file.
-3. Windows may show a blue box saying **"Windows protected your PC"**. This appears because Aurel is new and not yet signed with a paid certificate. Click **More info**, then **Run anyway**.
-4. Follow the installer. You can keep all the default choices. Near the end, it downloads the AI transcription engine (3–5 GB, one time), so this step needs an internet connection and can take a while. If it is interrupted, Aurel still installs, and you can finish later in **Settings → AI Engine**.
-5. Open **Aurel** from the Start menu or the desktop shortcut.
+## Installation
 
-Using the portable version instead? Just open `Aurel-0.1.0-Windows-x64-Portable.exe`. There is nothing to install. Step 3 above applies to it too.
+### Windows (installer)
 
-### Mac
+1. Download `Aurel-0.1.0-Windows-x64.exe` and run it.
+2. If Microsoft Defender SmartScreen shows **"Windows protected your PC"**, select **More info → Run anyway**. The warning appears because the build is not yet code-signed.
+3. Complete the setup wizard; the defaults are fine. During installation, the AI transcription engine is downloaded and configured (one-time, 3–5 GB), so an internet connection is required. If this step is interrupted, Aurel still installs, and you can finish later from **Settings → AI Engine**.
+4. Launch **Aurel** from the Start menu or the desktop shortcut.
 
-1. Click the Mac link for your computer above. Your browser downloads a `.zip` file.
-2. Open the `.zip` file. It unpacks into **Aurel**.
-3. Drag **Aurel** into your **Applications** folder.
-4. The first time, **right-click** (or Control-click) Aurel and choose **Open**, then click **Open** again. This is needed once because Aurel is not yet signed by Apple.
-5. If your Mac says **"Aurel is damaged and can't be opened"**, the app is fine: macOS says this about unsigned apps downloaded from the internet. Open the **Terminal** app, paste this line and press Return, then open Aurel again:
+### Windows (portable)
+
+Download `Aurel-0.1.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
+
+### macOS
+
+1. Download the `.zip` for your processor and open it to extract **Aurel.app**.
+2. Move **Aurel.app** to **Applications**.
+3. On first launch, Control-click (or right-click) Aurel, choose **Open**, then confirm with **Open**. This is required once because the build is not yet notarized by Apple.
+4. If macOS reports that **"Aurel is damaged and can't be opened"**, remove the download quarantine flag in Terminal, then launch the app again:
 
    ```sh
    xattr -cr /Applications/Aurel.app
    ```
 
-### The first time you open Aurel
+### First launch
 
-- Aurel downloads its instrument sounds (about 40 MB) in the background. You can start using it right away.
-- **AI engine:** the Windows installer has already set it up. With the portable version or on a Mac, Aurel sets it up the first time you press **Transcribe**. That is a one-time 3–5 GB download that takes a while, and you don't need to install anything yourself. After that, transcription works offline.
-- Everything you make stays on your computer. Aurel has no accounts and collects no data.
+- Instrument sample libraries (about 40 MB) download in the background. Aurel is usable immediately.
+- If the AI engine was not set up during installation (portable build or macOS), it installs automatically the first time you press **Transcribe**. This is a one-time 3–5 GB download that includes a private Python runtime, PyTorch, Demucs and Basic Pitch; nothing needs to be installed manually. Transcription then works offline.
+- Aurel has no accounts and no telemetry.
 
-## What you can do
+## Features
 
-- **Import a song.** Drop in an MP3, WAV, FLAC or video file, or paste a YouTube link.
-- **Transcribe it.** Aurel separates the instruments and writes sheet music and tab for each one. Treat the result as a strong first draft, ready for you to fix up.
-- **Practice.** Slow songs down without changing the pitch, loop a hard section, and speed up a little each time round. Follow a moving cursor across the music.
-- **Compose.** Write notes with your computer keyboard, the mouse, an on-screen piano or guitar neck, or a MIDI keyboard.
-- **Make it sound good.** Use the built-in recorded instruments and effects. On Windows, you can also use VST3 plug-ins you already own, such as Guitar Rig or Kontakt.
-- **Export.** Save audio (WAV, MP3, FLAC), MIDI, MusicXML (for MuseScore, Sibelius or Finale), PDF sheet music, or a folder of separate tracks for your recording software.
-- **Look and feel.** Choose a Dark, Light or Sakura theme.
+- **Import:** MP3, WAV, FLAC, M4A, OGG and video files, by drag-and-drop or file picker. You can also import from a YouTube link, a direct URL, or a MIDI file.
+- **Transcription:** stem separation, note transcription, and tempo, meter and downbeat detection. Results are quantized into editable notation and tablature.
+- **Practice:** speed from 25% to 200% with pitch preserved, saved loops, a gradual tempo trainer, metronome and count-in, transposition, a follow-along cursor, and an audio-vs-MIDI compare mode.
+- **Notation editor:** multi-part scores, tab, drum step grid, chords, articulations and techniques, alternate tunings and capo, and 200-step undo. Enter notes with the keyboard, the mouse, an on-screen piano or fretboard, or a USB MIDI keyboard.
+- **Sound:** sampled instruments with a per-part effects chain. On Windows, installed VST3 instruments and effects (for example Kontakt or Guitar Rig) run in real time with their native editors.
+- **Export:** WAV, MP3, FLAC, MIDI, MusicXML (MuseScore, Sibelius, Finale), PDF and ASCII tab, plus a DAW-ready folder of aligned stems.
+- **Interface:** Dark, Light and Sakura themes.
 
 ---
 
