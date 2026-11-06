@@ -54,7 +54,8 @@ function createWindow(): void {
     icon: app.isPackaged ? undefined : join(app.getAppPath(), 'build', 'icon.png'),
     titleBarStyle: process.platform === 'win32' ? 'hidden' : 'default',
     titleBarOverlay: process.platform === 'win32' ? { color: '#00000000', symbolColor: theme === 'light' ? '#3a3530' : '#d8d6cf', height: 40 } : undefined,
-    webPreferences: secureWebPreferences()
+    // The native plug-in window can cover Studio while its renderer still schedules audio.
+    webPreferences: { ...secureWebPreferences(), backgroundThrottling: false }
   })
   main.once('ready-to-show', () => main?.show())
   try { setOwnerWindow(main.getNativeWindowHandle()) } catch { /* editors just open unowned */ }

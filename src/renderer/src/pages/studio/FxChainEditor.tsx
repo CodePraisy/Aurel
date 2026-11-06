@@ -16,7 +16,7 @@ function format(value: number, unit?: string): string {
 }
 
 /** Where a plug-in lives: the part's live track (heard while you edit) or nowhere yet (Settings defaults). */
-export interface PluginHome { track: string | null; slotId: string }
+export interface PluginHome { track: string | null; slotId: string; waitForTrack?: () => Promise<string> }
 
 function QuickParameters({ configuration, home, onChange }: { configuration: VstConfiguration; home: PluginHome; onChange: (next: VstConfiguration) => void }) {
   const [parameters, setParameters] = useState<VstParameter[] | null>(null)
@@ -68,7 +68,8 @@ export function PluginControls({ configuration, home, onChange, onSave, autoOpen
     setEditing(true)
     setMessage(null)
     try {
-      const saved = await api.vst.edit(home.track, home.slotId, latest.current, configuration.plugin.name)
+      const track = home.waitForTrack ? await home.waitForTrack() : home.track
+      const saved = await api.vst.edit(track, home.slotId, latest.current, configuration.plugin.name)
       if (onSave) onSave(saved)
       else onChange(saved)
       setMessage({ text: 'Plug-in settings saved with this piece.' })
@@ -105,9 +106,9 @@ export function PluginProblem({ failure, crashed, onRetry }: { failure?: VstFail
   )
 }
 
-export default function FxChainEditor({ chain: unordered, onChange, onNativeSave, track = null, failures = [], crashed = [], onRetry }: {
+export default function FxChainEditor({ chain: unordered, onChange, onNativeSave, track = null, waitForTrack, failures = [], crashed = [], onRetry }: {
   chain: FxSlot[]; onChange: (chain: FxSlot[]) => void; onNativeSave?: (chain: FxSlot[]) => void
-  track?: string | null; failures?: VstFailure[]; crashed?: string[]; onRetry?: () => void
+  track?: string | null; waitForTrack?: () => Promise<string>; failures?: VstFailure[]; crashed?: string[]; onRetry?: () => void
 }) {
   // VST3 effects always run before Aurel's built-in ones (the same in playback and export)
   const chain = orderChain(unordered)
@@ -151,7 +152,7 @@ export default function FxChainEditor({ chain: unordered, onChange, onNativeSave
           </div>
           {slot.type === 'vst3' ? <>
             <PluginProblem failure={failures.find((f) => f.slotId === slot.id)} crashed={crashed.includes(slot.id)} onRetry={onRetry} />
-            <PluginControls configuration={slot} home={{ track, slotId: slot.id }} autoOpen={autoOpen === slot.id} onChange={(configuration) => patch({ ...slot, ...configuration })} onSave={(configuration) => {
+            <PluginControls configuration={slot} home={{ track, slotId: slot.id, waitForTrack }} autoOpen={autoOpen === slot.id} onChange={(configuration) => patch({ ...slot, ...configuration })} onSave={(configuration) => {
               if (!latest.current.some((entry) => entry.id === slot.id)) return
               const next = latest.current.map((entry) => entry.id === slot.id ? { ...entry, ...configuration } : entry)
               onChange(next)

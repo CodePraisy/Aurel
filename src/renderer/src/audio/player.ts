@@ -394,6 +394,14 @@ class Player {
   }
 
   /** Session id for a part's live plug-ins, or null when the part plays without plug-ins. */
+  async waitForPluginTrack(partId: string): Promise<string> {
+    const track = this.native.get(partId)
+    if (!track || !(await track.whenLive()) || this.native.get(partId) !== track) {
+      throw new Error(track?.error ?? "The live plug-in track is unavailable.")
+    }
+    return track.session
+  }
+
   trackFor(partId: string): string | null { return this.native.has(partId) && this.project ? `${this.project.id}.${partId}` : null }
 
   /** Put a crashed plug-in back in the chain. */

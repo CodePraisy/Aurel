@@ -103,7 +103,7 @@ export default function Rack() {
             <span className="chip">{part.fx ? 'Custom for this piece' : 'Instrument default'}</span>
           </div>
           <div className="space-y-2 max-h-[440px] overflow-auto pr-1">
-            <FxChainEditor key={part.id} chain={chain} onChange={setChain} track={liveTrack} failures={status?.failures} crashed={status?.crashed} onRetry={() => player.retry(part.id)} />
+            <FxChainEditor key={part.id} chain={chain} onChange={setChain} track={liveTrack} waitForTrack={() => player.waitForPluginTrack(part.id)} failures={status?.failures} crashed={status?.crashed} onRetry={() => player.retry(part.id)} />
             {status && !status.error && <p className="text-[12px] text-faint">Plug-ins run live: changes are heard right away.{status.latency ? ` Their ${Math.round((status.latency / (player.ctx?.sampleRate ?? 48000)) * 1000)} ms delay is compensated.` : ''}</p>}
           </div>
           <div className="flex justify-end gap-2 mt-3">
