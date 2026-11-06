@@ -4,14 +4,14 @@
 
 Aurel separates a recording into instrument stems (vocals, drums, bass, guitar, piano, other) and transcribes each stem into standard notation and guitar tablature. It also gives you a synchronized practice player, a full score editor, and real-time hosting for VST3 instruments and effects on Windows. Projects, audio and AI processing all stay on your machine.
 
-## Download — v0.2.0
+## Download — v0.3.0
 
-- [`Aurel-0.2.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.2.0/Aurel-0.2.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended) · 152 MB
-- [`Aurel-0.2.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.2.0/Aurel-0.2.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation) · 137 MB
-- [`Aurel-0.2.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.2.0/Aurel-0.2.0-macOS-arm64.zip) (Mac with Apple silicon) · 145 MB
-- [`Aurel-0.2.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.2.0/Aurel-0.2.0-macOS-x64.zip) (Mac with an Intel processor) · 155 MB
+- [`Aurel-0.3.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.3.0/Aurel-0.3.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
+- [`Aurel-0.3.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.3.0/Aurel-0.3.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
+- [`Aurel-0.3.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.3.0/Aurel-0.3.0-macOS-arm64.zip) (Mac with Apple silicon)
+- [`Aurel-0.3.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.3.0/Aurel-0.3.0-macOS-x64.zip) (Mac with an Intel processor)
 
-[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.2.0)
+[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.3.0)
 
 To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: Apple M…** means Apple silicon. **Processor: Intel** means Intel.
 
@@ -25,14 +25,14 @@ To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: A
 
 ### Windows (installer)
 
-1. Download `Aurel-0.2.0-Windows-x64.exe` and run it.
+1. Download `Aurel-0.3.0-Windows-x64.exe` and run it.
 2. If Microsoft Defender SmartScreen shows **"Windows protected your PC"**, select **More info → Run anyway**. The warning appears because the build is not yet code-signed.
 3. Complete the setup wizard; the defaults are fine. During installation, the AI transcription engine is downloaded and configured (one-time, 3–5 GB), so an internet connection is required. If this step is interrupted, Aurel still installs, and you can finish later from **Settings → AI Engine**.
 4. Launch **Aurel** from the Start menu or the desktop shortcut.
 
 ### Windows (portable)
 
-Download `Aurel-0.2.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
+Download `Aurel-0.3.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
 
 ### macOS
 
@@ -64,9 +64,7 @@ Download `Aurel-0.2.0-Windows-x64-Portable.exe` and run it from any folder or a 
 
 ---
 
-## Changes on main
-
-These changes are available when running the current source. The downloads above are the published v0.2.0 builds.
+## What’s new in v0.3.0
 
 - **Background jobs** run side by side for different recordings. Click a download or transcription card to see its progress, then open the recording or score from there. Repeated transcription requests for the same project share one job.
 - **Transcription** offers **Detect automatically** or a choice of vocals, drums, bass, guitar, piano or other instruments. The choices filter the separated tracks. Detected BPM uses whole numbers. Open the tempo control to restore the detected BPM or choose whether tempo edits also change the speed of the recording.
@@ -155,7 +153,7 @@ npm run dist       # Windows installer into release/
 npm run dist:mac   # Mac .zip into release/ (on a Mac)
 ```
 
-To publish a release, set `version` in `package.json`, then run the **Build release downloads** workflow from the Actions tab (or push a matching tag such as `v0.3.0` for version `0.3.0`). It creates the release if needed, builds the Windows installer, the Windows portable app and both Mac packages, and attaches them. Installed copies of Aurel then offer the update. Update checks use the public GitHub API, so the repository's releases must be public for them to find anything.
+To publish a release, set `version` in `package.json`, then run the **Build release downloads** workflow from the Actions tab (or push a matching tag such as `v0.3.1` for version `0.3.1`). It creates the release if needed, builds the Windows installer, the Windows portable app and both Mac packages, and attaches them. Installed copies of Aurel then offer the update. Update checks use the public GitHub API, so the repository's releases must be public for them to find anything.
 
 To rebuild the VST3 helper (`build/vst-host/aurel-vst-host.exe`), run `powershell -File native/vst-host/build.ps1` with Visual Studio 2022 (C++ workload) and CMake installed. `native/vst-host/test/protocol-test.cjs` tests it against real plug-ins.
 
