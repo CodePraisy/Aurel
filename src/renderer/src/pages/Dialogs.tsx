@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Plus, X, Youtube, AlertTriangle, Loader2, Upload } from 'lucide-react'
 import type { InstrumentKind, YouTubeCheck } from '@shared/types'
 import { useApp } from '@/store/app'
@@ -51,7 +51,7 @@ export function NewCompositionDialog() {
       <div className="grid grid-cols-2 gap-3">
         <label className="col-span-1"><div className="label mb-1.5">Title</div><input className="field" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus onFocus={(e) => e.target.select()} /></label>
         <label><div className="label mb-1.5">Composer</div><input className="field" value={composer} placeholder="Optional" onChange={(e) => setComposer(e.target.value)} /></label>
-        <label><div className="label mb-1.5">Tempo (BPM)</div><input className="field" type="number" min={20} max={300} value={tempo} onChange={(e) => setTempo(Math.max(20, Math.min(300, +e.target.value || 100)))} /></label>
+        <div><div className="label mb-1.5">Tempo (BPM)</div><div className="flex gap-1.5"><input className="field" type="number" min={20} max={300} value={tempo} onChange={(e) => setTempo(Math.max(20, Math.min(300, +e.target.value || 100)))} /><TapButton onTempo={setTempo} /></div></div>
         <label><div className="label mb-1.5">Measures</div><input className="field" type="number" min={1} max={999} value={measures} onChange={(e) => setMeasures(Math.max(1, Math.min(999, +e.target.value || 16)))} /></label>
         <label><div className="label mb-1.5">Key signature</div>
           <Select value={key} onChange={setKey} options={KEY_NAMES.map((k, i) => ({ value: i - 7, label: `${k} major`, hint: i - 7 !== 0 ? `${Math.abs(i - 7)}${i - 7 > 0 ? '♯' : '♭'}` : '' }))} />
@@ -146,5 +146,20 @@ export function UrlDialog() {
       <input className="field" placeholder="https://example.com/song.mp3" value={url} onChange={(e) => setUrl(e.target.value)} autoFocus />
       <p className="mt-2 text-faint text-[12px]">A direct link to an audio or video file. For YouTube pages, use “YouTube Link”.</p>
     </Modal>
+  )
+}
+
+/** Small tap-tempo button: tap the beat a few times. */
+function TapButton({ onTempo }: { onTempo: (bpm: number) => void }) {
+  const taps = useRef<number[]>([])
+  return (
+    <button type="button" className="btn-soft !h-9 shrink-0" title="Tap the beat to set the tempo" onMouseDown={(e) => {
+      e.preventDefault()
+      const now = performance.now(), list = taps.current
+      if (list.length && now - list[list.length - 1] > 2000) list.length = 0
+      list.push(now)
+      if (list.length > 8) list.shift()
+      if (list.length >= 2) onTempo(Math.max(20, Math.min(300, Math.round(60000 * (list.length - 1) / (list[list.length - 1] - list[0])))))
+    }}>Tap</button>
   )
 }

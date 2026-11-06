@@ -400,8 +400,14 @@ export function playbackWaypoints(sys: SystemLayout, mt: number): [number, numbe
   for (const row of sys.rows) {
     for (const event of row.events) {
       const tick = event.measure * mt + event.start
+      // notes first: where a note and a rest share a beat, the note's position wins
       if (!event.rest && !points.has(tick)) points.set(tick, event.x + 5)
     }
+  }
+  // rests too, so the cursor keeps time across them instead of gliding to the next note
+  for (const row of sys.rows) for (const event of row.events) {
+    const tick = event.measure * mt + event.start
+    if (event.rest && !points.has(tick)) points.set(tick, event.x + 5)
   }
   for (const measure of sys.measures) {
     const tick = measure.index * mt

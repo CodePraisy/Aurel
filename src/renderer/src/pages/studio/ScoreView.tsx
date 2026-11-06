@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Part, Project, ViewMode } from '@shared/types'
 import { renderScore, playbackWaypoints, playbackX, xForTick, systemForMeasure, type ScoreLayout, type Colors } from '@/notation/render'
-import { measureTicks, isFretted } from '@/music/theory'
+import { measureTicks, isFretted, midiName } from '@/music/theory'
+import { diatonicShift } from '@/music/score'
+import { PPQ } from '@shared/types'
 import { useProject } from '@/store/project'
 import { useApp } from '@/store/app'
 import { player } from '@/audio/player'
@@ -10,7 +12,7 @@ import { openContextMenu } from '@/components/menu'
 import { ADDABLE } from '../Dialogs'
 import { partRemovalActions } from './PartsPanel'
 import { INSTRUMENTS } from '@/music/theory'
-import { Play, Repeat, Trash2, ArrowUp, ArrowDown, Copy, ClipboardPaste, ListPlus, ListX, Plus, SlidersHorizontal, Waves } from 'lucide-react'
+import { Play, Repeat, Trash2, ArrowUp, ArrowDown, Copy, ClipboardPaste, ListPlus, ListX, Plus, SlidersHorizontal, Waves, ChevronsLeft } from 'lucide-react'
 
 function cssColor(name: string, alpha = 1): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim().split(/\s+/).join(',')
@@ -45,6 +47,8 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
   const barHi = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [layout, setLayout] = useState<ScoreLayout | null>(null)
+  const [drag, setDrag] = useState<NoteDrag | null>(null)
+  const swallowClick = useRef(false)
   const theme = useApp((s) => s.settings?.theme)
   const { cursor, sel, range, tabString, noteSelection } = useProject()
   const mode: ViewMode = project.view?.mode ?? 'both'
@@ -103,7 +107,7 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
       const bar = barHi.current
       const next = new Set<SVGElement>()
       if (el && bar) {
-        const tick = Math.min(player.getTick(), player.endTick)
+        const tick = Math.min(player.getVisualTick(), player.endTick)
         if (tick < lastTick) lastSys = -1
         lastTick = tick
         const mi = Math.min(Math.floor(tick / mt), (parts[0]?.measures.length ?? 1) - 1)
@@ -182,6 +186,7 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
   }
 
   const onClick = (e: React.MouseEvent) => {
+    if (swallowClick.current) { swallowClick.current = false; return }
     const h = hit(e)
     if (!h) return
     const st = useProject.getState()
@@ -216,17 +221,22 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
     const ev = h?.ev && !h.ev.rest
     const chord = h?.ev && part?.measures[mi]?.events.find((event) => event.id === h.ev?.id)
     const selectedNotes = useProject.getState().noteSelection
+    const deleteMode = useApp.getState().settings?.deleteMode ?? 'rest'
     const r = useProject.getState().range ?? { from: mi, to: mi }
     openContextMenu(e, [
       { label: 'Play from here', icon: <Play size={14} />, onClick: () => player.play(mi * mt + (h?.ev?.start ?? 0)) },
       { label: `Loop bars ${r.from + 1}–${r.to + 1}`, icon: <Repeat size={14} />, onClick: () => player.setOptions({ loop: r, loopOn: true }) },
       { separator: true },
       ...(ev ? [
-        { label: selectedNotes ? 'Delete selected notes' : 'Delete note', icon: <Trash2 size={14} />, hint: 'Del', onClick: () => useProject.getState().deleteSel() },
+        { label: selectedNotes ? 'Delete notes, leave rests' : 'Delete note, leave a rest', icon: <Trash2 size={14} />, hint: deleteMode === 'rest' ? 'Del' : 'Shift Del', onClick: () => useProject.getState().deleteSel('rest') },
+        { label: selectedNotes ? 'Delete notes and shift back' : 'Delete and shift back', icon: <ChevronsLeft size={14} />, hint: deleteMode === 'shift' ? 'Del' : 'Shift Del', onClick: () => useProject.getState().deleteSel('shift') },
         { label: 'Up a semitone', icon: <ArrowUp size={14} />, hint: '↑', onClick: () => useProject.getState().transposeSel(1) },
         { label: 'Down a semitone', icon: <ArrowDown size={14} />, hint: '↓', onClick: () => useProject.getState().transposeSel(-1) },
         { label: 'Tie to next', onClick: () => useProject.getState().toggleTie() },
         ...(part && part.kind !== 'drums' && chord && chord.notes.length > 1 ? [{ label: 'Arpeggiate chord…', icon: <Waves size={14} />, onClick: () => onEditArpeggio(part.id, chord.id) }] : []),
+        { separator: true }
+      ] : h?.ev?.rest ? [
+        { label: 'Remove rest and shift back', icon: <ChevronsLeft size={14} />, onClick: () => useProject.getState().deleteSel('shift') },
         { separator: true }
       ] : []),
       { label: selectedNotes ? 'Copy selected notes' : 'Copy bars', icon: <Copy size={14} />, hint: 'Ctrl C', onClick: () => useProject.getState().copy() },
@@ -244,6 +254,58 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
     const h = hit(e)
     if (!h) return
     player.play(h.m.index * mt + (h.ev?.start ?? 0))
+  }
+
+  // ---- drag and drop: move a note in time (left/right) and pitch (up/down); Ctrl copies
+  const targetAt = (clientX: number, clientY: number, from: NoteDrag) => {
+    if (!layout || !svgHost.current) return null
+    const r = svgHost.current.getBoundingClientRect()
+    const uiZoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1
+    const x = (clientX - r.left) / (zoom * uiZoom)
+    const y = (clientY - r.top) / (zoom * uiZoom)
+    const sys = layout.systems.find((sy) => y >= sy.top - 20 && y <= sy.bottom + 20) ?? layout.systems.reduce((a, b) => Math.abs((b.top + b.bottom) / 2 - y) < Math.abs((a.top + a.bottom) / 2 - y) ? b : a)
+    const row = sys.rows.find((rr) => rr.partId === from.partId && rr.kind === from.rowKind) ?? sys.rows.find((rr) => rr.partId === from.partId)
+    if (!row) return null
+    const m = sys.measures.find((mm) => x >= mm.x && x < mm.x + mm.w) ?? (x < sys.measures[0].x ? sys.measures[0] : sys.measures[sys.measures.length - 1])
+    // nearest sixteenth (or finer for short notes) by drawn position
+    const grid = Math.max(PPQ / 8, Math.min(PPQ / 4, from.dur))
+    let best = 0, bestD = Infinity
+    for (let t = 0; t + Math.min(from.dur, grid) <= mt; t += grid) {
+      const tx = xForTick(sys, m.index, t, mt)
+      if (tx !== null && Math.abs(tx + 5 - x) < bestD) { bestD = Math.abs(tx + 5 - x); best = t }
+    }
+    const steps = from.pitched && row.kind === 'staff' ? Math.round(-(y - from.y0) / 5) : 0
+    return { measure: m.index, tick: best, steps, x: xForTick(sys, m.index, best, mt) ?? m.noteX, rowY: row.y, rowH: row.h }
+  }
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0 || e.shiftKey || e.altKey || player.state === 'playing') return
+    const h = hit(e)
+    if (!h?.noteHit || !h.ev || h.ev.rest) return
+    const part = project.score.parts.find((p) => p.id === h.row.partId)
+    const ev = part?.measures[h.m.index]?.events.find((x) => x.id === h.ev!.id)
+    if (!part || !ev) return
+    const start = { x: e.clientX, y: e.clientY }
+    const base: NoteDrag = { partId: part.id, eventId: ev.id, rowKind: h.row.kind, dur: ev.dur, pitched: part.kind !== 'drums', y0: h.y, pitches: ev.notes.map((n) => n.pitch), keyFifths: project.score.keyFifths, from: { measure: h.m.index, tick: ev.start }, measure: h.m.index, tick: ev.start, steps: 0, x: h.ev.x, rowY: h.row.y, rowH: h.row.h, copy: false, active: false }
+    let current = base
+    const move = (ev2: MouseEvent) => {
+      if (!current.active && Math.hypot(ev2.clientX - start.x, ev2.clientY - start.y) < 6) return
+      const t = targetAt(ev2.clientX, ev2.clientY, base)
+      if (!t) return
+      current = { ...current, ...t, copy: ev2.ctrlKey || ev2.metaKey, active: true }
+      setDrag(current)
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      setDrag(null)
+      if (!current.active) return
+      swallowClick.current = true
+      setTimeout(() => { swallowClick.current = false }, 0)
+      const same = current.measure === base.from.measure && current.tick === base.from.tick && current.steps === 0
+      if (!same) useProject.getState().moveNote(current.partId, current.eventId, current.measure, current.tick, current.steps, current.copy)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
   }
 
   // ---- overlays
@@ -280,11 +342,20 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
     }
   }
 
+  if (drag?.active) {
+    const label = drag.steps ? drag.pitches.map((p) => midiName(diatonicShift(p, drag.steps, drag.keyFifths))).join(' ') : ''
+    overlays.push(
+      <div key="drag" className="note-ghost" style={{ left: 0, top: 0, width: 24 * zoom, height: (drag.rowH + 34) * zoom, transform: `translate(${(drag.x - 6) * zoom}px, ${(drag.rowY - 17 - drag.steps * 5) * zoom}px)` }}>
+        <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-accent2 px-1 text-[10.5px] font-semibold text-bg">{drag.copy ? 'Copy · ' : ''}Bar {drag.measure + 1}{label ? ` · ${label}` : ''}</span>
+      </div>
+    )
+  }
+
   return (
     <div ref={host} className="h-full min-w-0 relative">
       <div ref={scroller} className="absolute inset-0 overflow-auto">
         <div className="mx-6 my-5 rounded-2xl bg-paper shadow-[0_1px_0_rgb(var(--line)),0_10px_40px_-20px_rgb(0_0_0/0.35)] relative">
-          <div className="relative score-sheet" onClick={onClick} onDoubleClick={onDouble} onContextMenu={onContext} style={{ cursor: 'text' }}>
+          <div className="relative score-sheet" onClick={onClick} onMouseDown={onMouseDown} onDoubleClick={onDouble} onContextMenu={onContext} style={{ cursor: drag?.active ? (drag.copy ? 'copy' : 'grabbing') : 'text' }}>
             <div ref={svgHost} />
             <div className="absolute inset-0 pointer-events-none">
               {overlays}
@@ -296,4 +367,9 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
       </div>
     </div>
   )
+}
+
+interface NoteDrag {
+  partId: string; eventId: string; rowKind: 'staff' | 'tab'; dur: number; pitched: boolean; y0: number; pitches: number[]; keyFifths: number
+  from: { measure: number; tick: number }; measure: number; tick: number; steps: number; x: number; rowY: number; rowH: number; copy: boolean; active: boolean
 }

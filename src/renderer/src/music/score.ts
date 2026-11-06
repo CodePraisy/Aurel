@@ -1,6 +1,6 @@
 import type { Arpeggio, Measure, NoteEvent, NoteHead, Part, Score, InstrumentKind, Project, Technique } from '@shared/types'
 import { PPQ } from '@shared/types'
-import { decompose, INSTRUMENTS, measureTicks, isFretted } from './theory'
+import { decompose, INSTRUMENTS, measureTicks, isFretted, spell, letterIndex, keyAccidentals } from './theory'
 
 let idCounter = 0
 export function uid(prefix = 'e'): string {
@@ -301,4 +301,84 @@ export function rebar(part: Part, oldMt: number, newMt: number, count: number): 
 export function arpeggioStep(roll: Arpeggio, bpm: number): number {
   if (roll.beats !== undefined) return Math.max(0, Math.round(roll.beats * PPQ))
   return Math.max(0, Math.round((roll.delayMs ?? 0) * bpm * PPQ / 60_000))
+}
+
+// ---------- editing across barlines ----------
+interface Placed { at: number; e: NoteEvent }
+
+/** Every note of a part on one timeline (absolute ticks). Rests are left out. */
+export function partTimeline(part: Part, mt: number): Placed[] {
+  return part.measures.flatMap((m, mi) => m.events.filter((e) => !e.rest && e.notes.length).map((e) => ({ at: mi * mt + e.start, e })))
+}
+
+/** Write a timeline back into the part's bars, tying notes over barlines; the bar count stays the same. */
+export function placeTimeline(part: Part, mt: number, list: Placed[]): void {
+  const count = part.measures.length
+  const raw: NoteEvent[][] = Array.from({ length: count }, () => [])
+  for (const { at, e } of [...list].sort((a, b) => a.at - b.at)) {
+    let t = Math.max(0, at)
+    let left = e.dur - (t - at)
+    let first = true
+    while (left > 0) {
+      const mi = Math.floor(t / mt)
+      if (mi >= count) break
+      const end = Math.min(t + left, (mi + 1) * mt)
+      raw[mi].push({ ...e, id: first ? e.id : uid(), start: t - mi * mt, dur: end - t, tie: end < t + left ? true : e.tie, arpeggio: first ? e.arpeggio : undefined, dynamic: first ? e.dynamic : undefined })
+      left -= end - t
+      t = end
+      first = false
+    }
+  }
+  part.measures = raw.map((events) => normalizeMeasure({ events }, mt))
+}
+
+/**
+ * Delete events and pull everything after each one back by its length (Guitar Pro "shift back").
+ * Works for notes and rests; the freed time at the end of the part becomes rest.
+ */
+export function rippleDelete(part: Part, mt: number, ids: Set<string>): void {
+  const gaps: { at: number; dur: number }[] = []
+  part.measures.forEach((m, mi) => { for (const e of m.events) if (ids.has(e.id)) gaps.push({ at: mi * mt + e.start, dur: e.dur }) })
+  if (!gaps.length) return
+  const kept = partTimeline(part, mt).filter((x) => !ids.has(x.e.id))
+  placeTimeline(part, mt, kept.map(({ at, e }) => ({ at: at - gaps.reduce((sum, g) => sum + (g.at < at ? g.dur : 0), 0), e })))
+}
+
+/** `pitch` moved `steps` staff positions (lines and spaces), taking the key signature's sharps or flats. */
+export function diatonicShift(pitch: number, steps: number, keyFifths: number): number {
+  if (!steps) return pitch
+  const NATURAL = [0, 2, 4, 5, 7, 9, 11]
+  const sp = spell(pitch, keyFifths)
+  const pos = (sp.octave + 1) * 7 + letterIndex(sp.step) + steps
+  const letter = ((pos % 7) + 7) % 7
+  return Math.floor(pos / 7) * 12 + NATURAL[letter] + keyAccidentals(keyFifths)[letter]
+}
+
+/**
+ * Move (or copy) an event to a new place: its old spot becomes rest, and it overwrites
+ * whatever is at the new spot. Notes are moved `steps` staff positions up or down.
+ */
+export function moveEvent(part: Part, mt: number, id: string, to: number, opts: { steps?: number; keyFifths?: number; copy?: boolean } = {}): string | null {
+  const list = partTimeline(part, mt)
+  const item = list.find((x) => x.e.id === id)
+  if (!item) return null
+  const total = part.measures.length * mt
+  const at = Math.max(0, Math.min(total - item.e.dur, to))
+  const steps = opts.steps ?? 0
+  const moved: NoteEvent = {
+    ...item.e, id: opts.copy ? uid() : item.e.id,
+    notes: item.e.notes.map((n) => steps ? { pitch: diatonicShift(n.pitch, steps, opts.keyFifths ?? 0) } : { ...n })
+  }
+  const end = at + moved.dur
+  const rest = list.filter((x) => opts.copy || x.e.id !== id).flatMap((x): Placed[] => {
+    const xEnd = x.at + x.e.dur
+    if (xEnd <= at || x.at >= end) return [x]
+    // cut what the moved note now covers
+    const out: Placed[] = []
+    if (x.at < at) out.push({ at: x.at, e: { ...x.e, dur: at - x.at, tie: false } })
+    if (xEnd > end) out.push({ at: end, e: { ...x.e, id: uid(), dur: xEnd - end } })
+    return out
+  })
+  placeTimeline(part, mt, [...rest, { at, e: moved }])
+  return moved.id
 }

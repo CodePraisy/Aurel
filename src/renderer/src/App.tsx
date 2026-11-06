@@ -4,8 +4,10 @@ import { midi } from '@/audio/midi'
 import { useProject } from '@/store/project'
 import { ContextMenuHost } from '@/components/menu'
 import { SakuraScene } from '@/components/Sakura'
-import { MusicScene } from '@/components/MusicScene'
-import { ArrowLeft, RefreshCw, Home as HomeIcon, Library as LibraryIcon, Settings as SettingsIcon, Music2, X, Check, AlertCircle, Info, FileAudio } from 'lucide-react'
+import { NoteField } from '@/components/NoteField'
+import Sidebar from '@/components/Sidebar'
+import { openSession } from '@/store/sessions'
+import { RefreshCw, X, Check, AlertCircle, Info, FileAudio } from 'lucide-react'
 import { useApp } from '@/store/app'
 import { api } from '@/lib/api'
 import { cx, Modal, Progress } from '@/components/ui'
@@ -17,7 +19,7 @@ import { NewCompositionDialog, YouTubeDialog, UrlDialog } from '@/pages/Dialogs'
 import { UpdateDialog } from '@/pages/UpdateDialog'
 
 export default function App() {
-  const { route, go, back, history, settings, loadSettings, refreshLibrary, refreshEngine, toasts, jobs, importFile } = useApp()
+  const { route, go, settings, loadSettings, refreshLibrary, refreshEngine, toasts, jobs, importFile } = useApp()
   const [version] = useState(() => api.updates.version())
   const [updateStatus, setUpdateStatus] = useState<{ checking: boolean; error?: string } | null>(null)
   const updateRequest = useRef(0)
@@ -41,6 +43,9 @@ export default function App() {
   const [dragging, setDragging] = useState(false)
 
   useEffect(() => { void loadSettings(); void refreshLibrary(); void refreshEngine() }, [loadSettings, refreshLibrary, refreshEngine])
+  // every piece you open stays in the sidebar until you close it
+  const openId = route.name === 'studio' ? route.projectId : null
+  useEffect(() => { if (openId && settings) openSession(openId) }, [openId, !!settings])
   // MIDI keyboards: plays the selected part (or writes into the score in Write mode)
   useEffect(() => {
     midi.setTarget({
@@ -93,7 +98,7 @@ export default function App() {
   }, [settings])
   useEffect(() => {
     if (!settings) return
-    player.configure({ sampleRate: settings.sampleRate, bufferSize: settings.bufferSize, sinkId: settings.outputDevice, volume: settings.masterVolume, fxDefaults: settings.fxDefaults, effectTails: settings.effectTails, customSounds: settings.customSounds, soundSwaps: settings.soundSwaps })
+    player.configure({ sampleRate: settings.sampleRate, bufferSize: settings.bufferSize, sinkId: settings.outputDevice, volume: settings.masterVolume, fxDefaults: settings.fxDefaults, effectTails: settings.effectTails, customSounds: settings.customSounds, soundSwaps: settings.soundSwaps, vstInstruments: settings.vstInstruments })
     document.documentElement.style.zoom = String(settings.uiScale || 1)
   }, [settings])
   useEffect(() => {
@@ -150,44 +155,23 @@ export default function App() {
   }, [importFile])
 
   if (!settings) return <div className="h-full bg-bg" />
-  const studioOpen = route.name === 'studio'
-  const nav = [
-    { key: 'home', icon: HomeIcon, label: 'Home', on: route.name === 'home', go: () => go({ name: 'home' }) },
-    { key: 'library', icon: LibraryIcon, label: 'Library', on: route.name === 'library', go: () => go({ name: 'library' }) }
-  ]
   const jobList = Object.values(jobs).reverse()
   const selectedJob = openJob ? jobs[openJob] : undefined
+  const dim = route.name !== 'home'
+  const still = settings.reduceMotion
 
   return (
     <div className="h-full flex relative">
-      {settings.theme === 'sakura' ? <SakuraScene dim={route.name !== 'home'} /> : <MusicScene dim={route.name !== 'home'} />}
-      <nav className="relative z-10 w-[60px] shrink-0 flex flex-col items-center pt-3 pb-3 gap-1 border-r border-line bg-panel/60 drag">
-        <div className="h-9 w-9 mb-3 rounded-xl bg-accent/15 text-accent flex items-center justify-center no-drag" title="Aurel">
-          <Logo />
-        </div>
-        {nav.map((n) => (
-          <button key={n.key} onClick={n.go} title={n.label} className={cx('no-drag h-10 w-10 rounded-xl flex items-center justify-center transition-colors', n.on ? 'bg-accent/15 text-accent' : 'text-muted hover:text-fg hover:bg-fg/[0.06]')}>
-            <n.icon size={19} strokeWidth={1.8} />
-          </button>
-        ))}
-        {studioOpen && (
-          <button title="Studio" className="no-drag h-10 w-10 rounded-xl flex items-center justify-center bg-accent/15 text-accent"><Music2 size={19} strokeWidth={1.8} /></button>
-        )}
-        <div className="flex-1" />
-        <button onClick={() => go({ name: 'settings' })} title="Settings" className={cx('no-drag h-10 w-10 rounded-xl flex items-center justify-center transition-colors', route.name === 'settings' ? 'bg-accent/15 text-accent' : 'text-muted hover:text-fg hover:bg-fg/[0.06]')}>
-          <SettingsIcon size={19} strokeWidth={1.8} />
-        </button>
-        <button className="no-drag flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-fg/[0.06] hover:text-accent tabular-nums"
-          title="Check for updates" aria-label="Check for updates" onClick={() => void checkForUpdates()}>
-          <RefreshCw size={10} className={cx(updateStatus?.checking && 'animate-spin')} /><span>v{version}</span>
-        </button>
-      </nav>
+      {settings.theme === 'sakura'
+        ? <SakuraScene dim={dim} petals={settings.particles} />
+        : <div className={cx('theme-scene', dim && 'theme-scene-dim')} aria-hidden="true">
+            <NoteField count={settings.particles} dim={dim} theme={settings.theme} accent={`${settings.accent}${still ? '-still' : ''}`} />
+          </div>}
+      <Sidebar version={version} checking={!!updateStatus?.checking} onCheckUpdates={() => void checkForUpdates()} />
 
       <main className="flex-1 min-w-0 flex flex-col relative z-10">
-        {route.name !== 'studio' && <div className="h-10 shrink-0 drag flex items-center px-2">
-          {history.length > 0 && <button className="icon-btn no-drag" aria-label="Back" title="Back" onClick={() => back()}><ArrowLeft size={17} /></button>}
-        </div>}
-        <div className="flex-1 min-h-0">
+        {route.name !== 'studio' && <div className="h-10 shrink-0 drag" />}
+        <div key={route.name === 'studio' ? `studio-${route.projectId}` : route.name} className="flex-1 min-h-0 animate-page">
           {route.name === 'home' && <Home />}
           {route.name === 'library' && <Library />}
           {route.name === 'settings' && <SettingsPage section={route.section} />}
@@ -196,9 +180,9 @@ export default function App() {
       </main>
 
       {jobList.length > 0 && (
-        <div className="fixed left-[72px] bottom-[76px] z-40 flex flex-col gap-2 w-[340px] max-h-[45vh] overflow-y-auto">
+        <div className={cx('fixed bottom-[76px] z-40 flex flex-col gap-2 w-[340px] max-h-[45vh] overflow-y-auto transition-[left] duration-300', settings.sidebarOpen ? 'left-[240px]' : 'left-[76px]')}>
           {jobList.map((j) => (
-            <div key={j.jobId} className="card shadow-xl px-3.5 py-3 animate-fadein">
+            <div key={j.jobId} className="card shadow-xl px-3.5 py-3 animate-slidein">
               <div className="flex items-center gap-2">
                 <FileAudio size={15} className={j.error ? 'text-bad' : 'text-accent'} />
                 <button className="flex-1 min-w-0 text-left hover:text-accent rounded" title="View job details" onClick={() => setOpenJob(j.jobId)}>
@@ -215,7 +199,7 @@ export default function App() {
 
       <div className="fixed right-4 bottom-4 z-50 flex flex-col gap-2 items-end">
         {toasts.map((t) => (
-          <div key={t.id} className="card shadow-xl pl-3 pr-2 py-2.5 flex items-center gap-2.5 max-w-[420px] animate-fadein">
+          <div key={t.id} className="card shadow-xl pl-3 pr-2 py-2.5 flex items-center gap-2.5 max-w-[420px] animate-toast">
             {t.kind === 'ok' ? <Check size={15} className="text-ok shrink-0" /> : t.kind === 'error' ? <AlertCircle size={15} className="text-bad shrink-0" /> : <Info size={15} className="text-accent shrink-0" />}
             <span className="text-[13px]">{t.text}</span>
             {t.action && <button className="btn-soft !h-7" onClick={t.action.run}>{t.action.label}</button>}
@@ -265,13 +249,4 @@ export default function App() {
   )
 }
 
-export function Logo({ size = 20 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-      <path d="M4 19 L10.5 4.5 L17 19" />
-      <path d="M7 13.2 H14" />
-      <circle cx="18.5" cy="17.5" r="2.2" fill="currentColor" stroke="none" />
-      <path d="M20.6 17.4 V8.2" />
-    </svg>
-  )
-}
+export { Logo } from '@/components/Sidebar'

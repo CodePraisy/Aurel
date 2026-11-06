@@ -4,7 +4,7 @@ import { noteFromName } from '../src/shared/sounds'
 import { describe, it, expect } from 'vitest'
 import { Midi } from '@tonejs/midi'
 import { decompose, spell, measureTicks, pitchFromLetter, WHOLE } from '@/music/theory'
-import { emptyMeasure, overwrite, newScore, newProject, flattenPart, tempoMap, normalizeMeasure } from '@/music/score'
+import { emptyMeasure, overwrite, newScore, newProject, flattenPart, tempoMap, normalizeMeasure, rippleDelete, moveEvent, diatonicShift, partTimeline, defaultPart } from '@/music/score'
 import { assignTab, positionsFor, suggestTuning } from '@/music/tab'
 import { quantizeNotes, onsetsToMeasures, detectKey, analysisToScore } from '@/music/quantize'
 import { scoreToMidi, midiToScore } from '@/music/midi'
@@ -266,5 +266,48 @@ describe('instrument defaults', () => {
     expect(suggestTuning(part)).toBeNull()
     part.measures[0].events = [{ id: 'low-d', start: 0, dur: PPQ, velocity: 80, notes: [{ pitch: 38 }] }]
     expect(suggestTuning(part)?.name).toBe('Drop D')
+  })
+})
+
+describe('shift back and drag', () => {
+  const bar = (pitches: number[]) => {
+    let m = emptyMeasure(MT)
+    pitches.forEach((p, i) => { m = overwrite(m, MT, { notes: [{ pitch: p }], velocity: 90 }, i * PPQ, PPQ).measure })
+    return m
+  }
+  const notes = (part: ReturnType<typeof defaultPart>) => partTimeline(part, MT).map((x) => [x.at, x.e.notes[0].pitch, x.e.dur])
+  it('pulls later notes back across the barline, keeping the bar count', () => {
+    const part = defaultPart('piano', 2, MT)
+    part.measures = [bar([60, 62, 64, 65]), bar([67, 69, 71, 72])]
+    rippleDelete(part, MT, new Set([part.measures[0].events[1].id]))
+    expect(part.measures.length).toBe(2)
+    expect(notes(part).map((n) => n[1])).toEqual([60, 64, 65, 67, 69, 71, 72])
+    expect(part.measures[0].events.map((e) => e.notes[0]?.pitch)).toEqual([60, 64, 65, 67])
+    expect(part.measures[1].events.at(-1)!.rest).toBe(true)
+  })
+  it('a note moved over a barline is tied, and its old place becomes rest', () => {
+    const part = defaultPart('piano', 2, MT)
+    part.measures = [bar([60]), emptyMeasure(MT)]
+    const id = part.measures[0].events[0].id
+    part.measures[0] = overwrite(part.measures[0], MT, { id, notes: [{ pitch: 60 }], velocity: 90 }, 0, PPQ * 2).measure
+    moveEvent(part, MT, id, MT - PPQ, { steps: 1, keyFifths: 0 })
+    const t = notes(part)
+    expect(t).toEqual([[MT - PPQ, 62, PPQ], [MT, 62, PPQ]])
+    expect(part.measures[0].events.find((e) => !e.rest)!.tie).toBe(true)
+    expect(sum(part.measures[0].events.map((e) => e.dur))).toBe(MT)
+  })
+  it('copy keeps the original; moving onto a note replaces it', () => {
+    const part = defaultPart('piano', 1, MT)
+    part.measures = [bar([60, 62])]
+    moveEvent(part, MT, part.measures[0].events[0].id, PPQ, { copy: true })
+    expect(notes(part)).toEqual([[0, 60, PPQ], [PPQ, 60, PPQ]])
+  })
+  it('steps follow the key signature', () => {
+    expect(diatonicShift(60, 1, 0)).toBe(62)
+    expect(diatonicShift(64, 1, 0)).toBe(65)
+    expect(diatonicShift(66, 1, 1)).toBe(67) // G major: F# up to G
+    expect(diatonicShift(65, 1, 1)).toBe(66) // F natural is written E#, so one step up is F#
+    expect(diatonicShift(60, -1, 0)).toBe(59)
+    expect(diatonicShift(60, 7, 0)).toBe(72)
   })
 })

@@ -6,8 +6,8 @@ import { useProject } from '@/store/project'
 import { useApp } from '@/store/app'
 import { api } from '@/lib/api'
 import { player, soundFor, fxFor } from '@/audio/player'
-import { SOUNDS, soundLabel, type SoundId } from '@/audio/synth'
-import { customSounds, swapFor } from '@/audio/custom'
+import { SOUNDS } from '@/audio/synth'
+import { customSounds, swapName } from '@/audio/custom'
 import { Modal, cx } from '@/components/ui'
 import FxChainEditor, { PluginControls, PluginProblem } from './FxChainEditor'
 import { usePlayer } from './Transport'
@@ -74,7 +74,7 @@ export default function Rack() {
               const on = !part.vstInstrument && sound === s.id
               return (
                 <div key={s.id} className={cx('flex items-center gap-2 px-2.5 h-9 rounded-lg cursor-pointer text-[13px]', on ? 'bg-accent/15 text-accent' : 'hover:bg-fg/[0.06]')} onClick={() => choose(s.id)}>
-                  <span className="flex-1 truncate">{s.label}{swapFor(s.id) ? <span className="text-faint text-[11px]"> · plays {soundLabel(swapFor(s.id) as SoundId)}</span> : s.for.includes(part.kind) && !on ? <span className="text-faint text-[11px]"> · suggested</span> : null}</span>
+                  <span className="flex-1 truncate">{s.label}{swapName(s.id) ? <span className="text-faint text-[11px]"> · plays {swapName(s.id)}</span> : s.for.includes(part.kind) && !on ? <span className="text-faint text-[11px]"> · suggested</span> : null}</span>
                   {st && !st.ready && (downloading ? <Loader2 size={13} className="animate-spin text-faint" /> : <button className="icon-btn !h-6 !w-6" title={`Download ${packFor(s.id)?.label}`} onClick={(e) => { e.stopPropagation(); void download([s.id]) }}><Download size={13} /></button>)}
                   {st?.ready && on && <Check size={14} />}
                 </div>

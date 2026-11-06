@@ -133,7 +133,7 @@ export default function SettingsPage({ section }: { section?: string }) {
         ))}
       </aside>
       <div className="flex-1 overflow-auto">
-        <div className="max-w-[720px] px-10 pb-16 animate-fadein" key={sec}>
+        <div className="max-w-[720px] px-10 pb-16 animate-page" key={sec}>
           {sec === 'appearance' && (
             <>
               <h2 className="font-display text-[22px] mb-4">Appearance</h2>
@@ -163,6 +163,7 @@ export default function SettingsPage({ section }: { section?: string }) {
               <Row title="Interface size" desc="Scale the whole interface.">
                 <div className="seg">{[0.9, 1, 1.1, 1.25].map((z) => <button key={z} className={cx(s.uiScale === z && 'on')} onClick={() => set({ uiScale: z })}>{Math.round(z * 100)}%</button>)}</div>
               </Row>
+              <ParticleRow value={s.particles} still={s.reduceMotion} onChange={(particles) => set({ particles })} />
               <Row title="Reduce motion" desc="Keeps notes and rests still, hides falling petals, and turns off interface animations across all themes."><Toggle ariaLabel="Reduce motion" on={s.reduceMotion} onChange={(v) => set({ reduceMotion: v })} /></Row>
             </>
           )}
@@ -197,6 +198,9 @@ export default function SettingsPage({ section }: { section?: string }) {
           {sec === 'editor' && (
             <>
               <h2 className="font-display text-[22px] mb-4">Editor</h2>
+              <Row title="Deleting a note" desc="Leave a rest keeps every other note where it is. Shift back pulls the notes after it earlier to close the gap. The right-click menu always offers both.">
+                <div className="seg">{([['rest', 'Leave a rest'], ['shift', 'Shift back']] as const).map(([k, label]) => <button key={k} className={cx(s.deleteMode === k && 'on')} onClick={() => set({ deleteMode: k })}>{label}</button>)}</div>
+              </Row>
               <Row title="Piano, fretboard & MIDI keyboard" desc="Write adds the notes you play to the score; Play only lets you play without writing. You can switch any time in the studio.">
                 <div className="seg">{(['write', 'play'] as const).map((m) => <button key={m} className={cx(s.inputMode === m && 'on')} onClick={() => { set({ inputMode: m }); useProject.getState().setInputMode(m) }}>{m === 'write' ? 'Write' : 'Play only'}</button>)}</div>
               </Row>
@@ -330,5 +334,28 @@ export default function SettingsPage({ section }: { section?: string }) {
         </div>
       </div>
     </div>
+  )
+}
+
+const PARTICLE_MAX = 200
+const PARTICLE_WARN = 120
+
+/** How many notes float in the background. The red end of the slider can slow down older computers. */
+function ParticleRow({ value, still, onChange }: { value: number; still: boolean; onChange: (v: number) => void }) {
+  const [local, setLocal] = useState(value)
+  useEffect(() => setLocal(value), [value])
+  const heavy = local > PARTICLE_WARN
+  const pct = (local / PARTICLE_MAX) * 100
+  return (
+    <Row title="Floating notes" desc={still ? 'Shown still while Reduce motion is on.' : heavy ? 'This many can make Aurel slower on older computers or laptops on battery.' : 'Notes and rests drifting behind the app (petals in Sakura).'}>
+      <div className="flex items-center gap-3 w-64">
+        <input type="range" aria-label="Floating notes" min={0} max={PARTICLE_MAX} step={2} value={local}
+          className={cx('slider', heavy ? 'danger-high' : 'danger-low')}
+          style={{ ['--pct' as string]: `${pct}%`, ['--warn-at' as string]: `${(PARTICLE_WARN / PARTICLE_MAX) * 100}%` }}
+          onChange={(e) => { const v = +e.target.value; setLocal(v); useApp.setState((st) => st.settings ? { settings: { ...st.settings, particles: v } } : st) }}
+          onPointerUp={() => onChange(local)} onKeyUp={() => onChange(local)} onBlur={() => local !== value && onChange(local)} />
+        <span className={cx('w-9 text-right tabular-nums', heavy && 'text-bad font-medium')}>{local}</span>
+      </div>
+    </Row>
   )
 }

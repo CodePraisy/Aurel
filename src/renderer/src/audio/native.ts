@@ -38,6 +38,8 @@ export class NativeTrack {
   failures: VstFailure[] = []
   error: string | null = null
   loading = true
+  /** The host is connected and its plug-ins are loaded, so notes sound right away. */
+  live = false
   private gen = 0
   private queue: string[] = []
   private flushing = false
@@ -76,6 +78,9 @@ export class NativeTrack {
       node.connect(this.output)
       this.captureSource?.connect(node)
       this.node = node
+      // start the host's timeline now, not at frame 0: otherwise it first renders everything
+      // since the audio device started and the first notes arrive too late to be heard
+      this.reset(this.frameOf(this.ctx.currentTime) + 128)
       return true
     } catch (e) {
       this.error = (e as Error).message
@@ -113,8 +118,10 @@ export class NativeTrack {
         this.latency = result.latency
         this.failures = result.failures
         this.error = result.available ? null : result.reason ?? 'VST3 plug-ins are not available.'
+        this.live = !this.error
       } catch (e) {
         this.error = (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+        this.live = false
       }
       this.changed()
     })
@@ -122,7 +129,15 @@ export class NativeTrack {
   }
 
   /** Forget the loaded chain so the next setChain reloads it (after a crash). */
-  invalidate(): void { this.chainKey = null }
+  invalidate(): void { this.chainKey = null; this.live = false }
+
+  /** Resolves once notes can be played (true), or the track failed to start (false). */
+  async whenLive(): Promise<boolean> {
+    if (!(await this.ready)) return false
+    let run: Promise<void>
+    do { run = this.chainRun; await run } while (run !== this.chainRun)
+    return this.live
+  }
 
   private send(...lines: string[]): void {
     this.queue.push(...lines)
