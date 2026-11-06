@@ -1,0 +1,104 @@
+{
+  "name": "aurel",
+  "productName": "Aurel",
+  "version": "0.1.0",
+  "description": "AI music transcription, composition & practice studio",
+  "author": "Praise Onuoha",
+  "license": "UNLICENSED",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "dist": "electron-vite build && electron-builder --win",
+    "postinstall": "node node_modules/electron/install.js",
+    "dist:mac": "electron-vite build && electron-builder --mac"
+  },
+  "dependencies": {
+    "@tonejs/midi": "2.0.28",
+    "ffmpeg-static": "5.3.0",
+    "jszip": "3.10.1",
+    "sql.js": "1.13.0"
+  },
+  "devDependencies": {
+    "@fontsource-variable/fraunces": "5.2.5",
+    "@fontsource-variable/inter": "5.2.5",
+    "@types/node": "22.15.3",
+    "@types/react": "19.1.2",
+    "@types/react-dom": "19.1.2",
+    "@types/sql.js": "1.4.9",
+    "@vitejs/plugin-react": "5.1.4",
+    "autoprefixer": "10.4.21",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
+    "electron-vite": "5.0.0",
+    "lucide-react": "0.511.0",
+    "postcss": "8.5.32",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.8.3",
+    "vexflow": "4.2.5",
+    "vite": "7.3.7",
+    "vitest": "5.1.0",
+    "zustand": "5.0.5"
+  },
+  "build": {
+    "appId": "com.aurel.studio",
+    "productName": "Aurel",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/sql.js/dist/*.wasm"
+    ],
+    "extraResources": [
+      {
+        "from": "engine",
+        "to": "engine",
+        "filter": [
+          "**/*.py",
+          "requirements*.txt"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png",
+      "extraResources": [
+        {
+          "from": "build/vst-host",
+          "to": "vst-host",
+          "filter": [
+            "aurel-vst-host.exe",
+            "Steinberg-VST3-LICENSE.txt"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "include": "build/installer.nsh",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "artifactName": "Aurel-${version}-macOS-${arch}.${ext}",
+      "target": "zip"
+    }
+  },
+  "overrides": {
+    "@electron/universal": {
+      "minimatch": "11.0.5"
+    },
+    "app-builder-lib": {
+      "minimatch": "11.0.5"
+    }
+  }
+}
