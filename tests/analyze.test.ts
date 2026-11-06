@@ -41,7 +41,7 @@ describe('tempo & meter detection', () => {
     'finds %s BPM in %s/4 and the downbeat', (bpm, num, lead) => {
       const g = guessTempo(clickTrack(bpm, num, 35, lead))
       expect(g).not.toBeNull()
-      expect(g!.bpm).toBeCloseTo(bpm, 0)
+      expect(g!.bpm).toBe(Math.round(bpm))
       expect(g!.timeSig).toEqual({ num, den: 4 })
       expect(g!.downbeat).toBeCloseTo(lead, 1)
     }

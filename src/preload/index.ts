@@ -22,7 +22,8 @@ const api: AurelApi = {
   project: {
     create: (p) => i('project:create', p),
     load: (id) => i('project:load', id),
-    save: (p) => i('project:save', p),
+    save: (p, analysisComplete) => i('project:save', p, analysisComplete),
+    changeCover: (id) => i('project:cover', id),
     readText: (id, rel) => i('project:readText', id, rel),
     url: (id, rel) => `aurel://p/${id}/${rel.split('/').map(encodeURIComponent).join('/')}`
   },
@@ -44,7 +45,7 @@ const api: AurelApi = {
   engine: {
     status: (force) => i('engine:status', force),
     install: () => i('engine:install'),
-    process: (id) => i('engine:process', id)
+    process: (id, sources) => i('engine:process', id, sources)
   },
   jobs: {
     cancel: (id) => i('jobs:cancel', id),

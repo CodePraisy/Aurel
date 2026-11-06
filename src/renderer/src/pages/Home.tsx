@@ -30,7 +30,7 @@ export default function Home() {
 
   const cards = [
     { icon: AudioLines, title: 'Import Audio', body: 'MP3, WAV, FLAC, M4A, OGG or a video file. Drag & drop works anywhere.', action: pickAudio, hint: 'Separate · Transcribe · Practice' },
-    { icon: Youtube, title: 'YouTube Link', body: 'Paste a link and Aurel downloads the audio, separates the instruments and writes the notation.', action: () => setDialog('youtube'), hint: 'Download · Separate · Transcribe' },
+    { icon: Youtube, title: 'YouTube Link', body: 'Paste a link to download a recording. Then choose how to transcribe it.', action: () => setDialog('youtube'), hint: 'Download · Transcribe' },
     { icon: PenLine, title: 'New Composition', body: 'Start from a blank score. Write on the staff or in tab, with drums on a step grid.', action: () => setDialog('new'), hint: 'Notation · Tab · Drums' }
   ]
 

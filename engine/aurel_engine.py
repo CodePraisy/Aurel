@@ -354,12 +354,16 @@ def cmd_process(a) -> None:
     progress("Analysing tempo", 0.61)
     beat_src = stems.get("drums") if "drums" in stems and rms(stems["drums"]) > 0.01 else mix
     tempo, beats, meter, downbeat = tempo_and_beats(beat_src.mean(0))
-    analysis = {"tempo": round(tempo, 2), "beatOffset": beats[0] if beats else 0.0, "downbeat": round(downbeat, 4), "timeSig": {"num": meter, "den": 4}, "beats": [round(b, 4) for b in beats], "device": device, "stems": [], "notes": {}}
+    analysis = {"tempo": round(tempo), "beatOffset": beats[0] if beats else 0.0, "downbeat": round(downbeat, 4), "timeSig": {"num": meter, "den": 4}, "beats": [round(b, 4) for b in beats], "device": device, "stems": [], "notes": {}}
 
     names = [n for n in stems if rms(stems[n]) / (mix_rms + 1e-9) > 0.04]
     skipped = [n for n in stems if n not in names]
     if skipped:
         log("Skipping near-silent stems:", ", ".join(skipped))
+    if a.sources:
+        names = [name for name in names if name in a.sources]
+        if not names:
+            raise RuntimeError("The selected instrument groups did not produce audible stems.")
     jobs = []  # (stem name, file, family, audio)
     for name in names:
         audio = stems[name]
@@ -408,6 +412,7 @@ def main() -> None:
     p.add_argument("--model", default="htdemucs_6s")
     p.add_argument("--device", default="auto")
     p.add_argument("--drums", action="store_true")
+    p.add_argument("--sources", nargs="+", choices=["vocals", "drums", "bass", "guitar", "piano", "other"])
     p.add_argument("--stems-dir", default=None, help="use pre-separated stems instead of running Demucs")
     a = ap.parse_args()
     try:

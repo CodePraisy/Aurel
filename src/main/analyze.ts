@@ -166,9 +166,9 @@ export function guessTempo(file: string): RhythmEstimate | null {
     if (!group || group.length < 3 || group.length <= sections.length / 2) return null
     period = group.reduce((sum, value) => sum + value, 0) / group.length
     // An overall estimate from different passages does not establish a downbeat or meter.
-    return { bpm: Math.round(60 * fps / period * 10) / 10, downbeat: 0 }
+    return { bpm: Math.round(60 * fps / period), downbeat: 0 }
   }
-  const bpm = Math.round(60 * fps / period * 10) / 10
+  const bpm = Math.round(60 * fps / period)
 
   // Fit the phase near the start to avoid accumulating phase error over a long recording.
   const first = Math.max(0, smooth.findIndex((v) => v > 0.08))

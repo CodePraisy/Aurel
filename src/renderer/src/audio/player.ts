@@ -1,3 +1,4 @@
+import { recordingRate } from '@shared/rhythm'
 import type { Listen, Part, Project } from '@shared/types'
 import { PPQ } from '@shared/types'
 import { flattenPart, tempoMap, scoreEndTick, type PlayNote, type TempoMap } from '@/music/score'
@@ -145,6 +146,7 @@ class Player {
   private startRequest = 0
   state: 'stopped' | 'playing' = 'stopped'
   countingIn = false
+  private countClicks: OscillatorNode[] = []
   opts: PlayerOptions = {
     speed: 1, loop: null, loopOn: false, metronome: false, metronomeVolume: 0.6, countIn: 0, transpose: 0, compare: null,
     mix: { on: true, volume: 0.9 }, trainer: { on: false, from: 0.6, to: 1, step: 0.05 }, listen: 'parts'
@@ -278,10 +280,11 @@ class Player {
 
   setOptions(patch: Partial<PlayerOptions>): void {
     const listenChanged = patch.listen !== undefined && patch.listen !== this.opts.listen
+    const loopChanged = (patch.loopOn !== undefined && patch.loopOn !== this.opts.loopOn) || (patch.loop !== undefined && patch.loop !== this.opts.loop)
     const speedChanged = patch.speed !== undefined && patch.speed !== this.opts.speed
     const transposeChanged = patch.transpose !== undefined && patch.transpose !== this.opts.transpose
     this.opts = { ...this.opts, ...patch }
-    if ((speedChanged || transposeChanged) && this.state === 'playing') this.restartAt(this.getTick())
+    if ((speedChanged || transposeChanged || loopChanged) && !listenChanged && this.state === 'playing') this.restartAt(this.getTick())
     else if (speedChanged && this.project) this.tm = tempoMap(this.project.score, this.opts.speed)
     if (transposeChanged && this.project?.audio) void this.applyAudioTranspose().catch((error: Error) => {
       this.fxError = error.message
@@ -299,8 +302,12 @@ class Player {
   setProject(p: Project): void {
     const first = !this.project || this.project.id !== p.id
     const hasStems = p.score.parts.some((part) => part.stem)
+    const timingChanged = !first && (p.score.tempo !== this.project!.score.tempo ||
+      p.audio?.offset !== this.project!.audio?.offset ||
+      recordingRate(p, this.opts.speed) !== recordingRate(this.project!, this.opts.speed))
+    const resume = timingChanged && this.state === 'playing' ? this.getTick() : null
     if (first || (hasStems && !this.project?.score.parts.some((part) => part.stem))) {
-      this.opts.mix = { ...this.opts.mix, on: !hasStems }
+      this.opts.mix = { ...this.opts.mix, on: true }
     }
     if (first) {
       this.stop()
@@ -314,7 +321,8 @@ class Player {
       this.opts.loop = null
       this.opts.loopOn = false
       this.opts.speed = p.practice.speed || 1
-      this.opts.listen = p.audio ? p.practice.listen ?? 'parts' : 'parts'
+      this.opts.listen = p.audio ? (p.practice.listen === 'transcription' && p.score.parts.length ? 'transcription' : 'original') : 'parts'
+      this.opts.compare = null
       this.opts.transpose = 0
       this.shifted.clear()
     }
@@ -351,6 +359,7 @@ class Player {
     }
     if (this.state === 'playing') this.noteIdx = this.indexAt(this.schedTick)
     this.applyMix()
+    if (resume !== null) this.restartAt(resume)
     if (first) this.emit()
   }
 
@@ -360,8 +369,13 @@ class Player {
     return lo
   }
 
-  /** The part as it plays right now: the Transcription switch makes every part play its notes. */
-  private effective(part: Part): Part { return this.opts.listen === 'transcription' && part.playback !== 'midi' ? { ...part, playback: 'midi' } : part }
+  private effective(part: Part): Part {
+    if (this.opts.listen === 'transcription' && part.playback !== 'midi') return { ...part, playback: 'midi' }
+    if (this.opts.listen === 'original' && part.stem && part.playback !== 'audio') return { ...part, playback: 'audio' }
+    return part
+  }
+  private get audioRate(): number { return this.project ? recordingRate(this.project, this.opts.speed) : this.opts.speed }
+  get audioScale(): number { return this.audioRate / this.opts.speed }
   route(part: Part): Route { return routeFor(this.effective(part), !!this.project?.audio) }
 
   /** Plug-in state for the part, for the parts list and the sound rack. */
@@ -521,11 +535,11 @@ class Player {
   private async streamFor(part: Part): Promise<StemStream | null> {
     const p = this.project
     if (!p || !part.stem || !this.ctx) return null
-    const key = `${part.stem}@${this.opts.transpose}@${this.opts.speed}@${this.ctx.sampleRate}`
+    const key = `${part.stem}@${this.opts.transpose}@${this.audioRate}@${this.ctx.sampleRate}`
     const hit = this.streams.get(key)
     if (hit) return hit
-    const stream = await api.vst.stem(p.id, part.stem, this.opts.transpose, this.opts.speed, this.ctx.sampleRate)
-    this.streams.set(key, stream)
+    const stream = await api.vst.stem(p.id, part.stem, this.opts.transpose, this.audioRate, this.ctx.sampleRate)
+    if (this.project?.id === p.id) this.streams.set(key, stream)
     return stream
   }
 
@@ -539,26 +553,27 @@ class Player {
     const t = this.ctx.currentTime
     const parts = this.project.score.parts
     const original = this.opts.listen === 'original' && !!this.project.audio
+    const anySolo = parts.some((part) => part.solo)
+    const soloAudio = original && anySolo
     for (const part of parts) {
       const b = this.buses.get(part.id)
       const tr = this.tracks.get(part.id)
       const route = this.route(part)
       const comparing = this.opts.compare === part.id && !!tr
-      const notesOn = !original && (route === 'stemfx' || this.effective(part).playback === 'midi' || !part.stem || comparing)
+      const notesOn = original ? soloAudio && route === 'stemfx' : (route !== 'stem' || comparing)
       if (b) {
         b.gain.gain.setTargetAtTime(this.audible(part) && notesOn ? part.volume : 0, t, 0.015)
         b.pan.pan.setTargetAtTime(comparing ? 0.9 : part.pan, t, 0.015)
       }
       if (tr) {
-        const audioOn = !original && this.audible(part) && (route === 'stem' || comparing)
+        const audioOn = this.audible(part) && (original ? soloAudio && route === 'stem' : route === 'stem' || comparing)
         tr.gain.gain.setTargetAtTime(audioOn ? part.volume : 0, t, 0.015)
         tr.pan.pan.setTargetAtTime(comparing ? -0.9 : part.pan, t, 0.015)
       }
     }
     const mix = this.tracks.get('__mix')
     if (mix) {
-      const anySolo = parts.some((x) => x.solo)
-      const mixOn = original || (this.opts.listen === 'parts' && this.opts.mix.on && !anySolo)
+      const mixOn = this.opts.mix.on && !anySolo && (original || this.opts.listen === 'parts')
       mix.gain.gain.setTargetAtTime(mixOn ? this.opts.mix.volume : 0, t, 0.015)
     }
     this.metroBus.gain.setTargetAtTime(this.opts.metronomeVolume, t, 0.01)
@@ -582,25 +597,30 @@ class Player {
     const l = this.opts.loopOn && this.opts.loop
     if (!l || !this.project) return null
     const mt = measureTicks(this.project.score.timeSig)
-    return { a: l.from * mt, b: (l.to + 1) * mt }
+    const a = l.from * mt
+    const b = Math.min(this.endTick, (l.to + 1) * mt)
+    return a < b ? { a, b } : null
   }
   get endTick(): number {
     if (!this.project) return 0
     const s = this.project.score
     const e = scoreEndTick(s)
-    if (s.parts.length === 0 && this.project.audio) return this.tm1.secToTick(this.project.audio.duration - this.project.audio.offset)
+    if (this.project.audio && (s.parts.length === 0 || this.opts.listen === 'original')) {
+      return Math.max(0, this.tm1.secToTick((this.project.audio.duration - this.project.audio.offset) / this.audioScale))
+    }
     return e
   }
 
-  play(from?: number): void {
+  play(from?: number, withCountIn = true): void {
     if (!this.project) return
+    if (withCountIn && this.opts.trainer.on && this.loopTicks()) this.opts.speed = this.opts.trainer.from
     const ctx = this.ensure()
     this.syncBuses()
     const request = ++this.startRequest
     const stemParts = this.project.score.parts.filter((part) => this.route(part) === 'stemfx')
     const loading = [...this.native.values()].filter((t) => t.loading).map((t) => t.ready)
-    const missing = stemParts.filter((part) => !this.streams.has(`${part.stem}@${this.opts.transpose}@${this.opts.speed}@${ctx.sampleRate}`))
-    if (!missing.length && !loading.length) { this.start(from); return }
+    const missing = stemParts.filter((part) => !this.streams.has(`${part.stem}@${this.opts.transpose}@${this.audioRate}@${ctx.sampleRate}`))
+    if (!missing.length && !loading.length) { this.start(from, withCountIn); return }
     // Rare: a plug-in track is still starting, or a recording needs converting for this speed or key.
     this.preparingFx = true
     this.fxError = null
@@ -608,7 +628,7 @@ class Player {
     void Promise.all([...missing.map((part) => this.streamFor(part)), ...loading]).then(() => {
       if (request !== this.startRequest) return
       this.preparingFx = false
-      this.start(from)
+      this.start(from, withCountIn)
     }, (error: Error) => {
       if (request !== this.startRequest) return
       this.preparingFx = false
@@ -617,7 +637,7 @@ class Player {
     })
   }
 
-  private start(from?: number): void {
+  private start(from: number | undefined, withCountIn: boolean): void {
     const ctx = this.ensure()
     const project = this.project!
     if (this.state === 'playing') this.hardStop()
@@ -627,9 +647,8 @@ class Player {
     const loop = this.loopTicks()
     if (loop && (tick < loop.a || tick >= loop.b)) tick = loop.a
     if (tick >= this.endTick - 1) tick = 0
-    if (this.opts.trainer.on && loop) this.opts.speed = this.opts.trainer.from
     this.tm = tempoMap(project.score, this.opts.speed)
-    const countIn = this.opts.countIn
+    const countIn = withCountIn ? this.opts.countIn : 0
     const mt = measureTicks(project.score.timeSig)
     const countSec = countIn ? this.tm.tickToSec(tick + countIn * mt) - this.tm.tickToSec(tick) : 0
     const lead = Math.max(0.08, this.maxLead)
@@ -637,15 +656,21 @@ class Player {
     this.segCtx0 = ctx.currentTime + lead + countSec
     this.beforeWrap = null
     // from the very start, play the recording from 0:00 and let the bar grid begin at the first downbeat
-    this.preRoll = tick === 0 && project.audio ? project.audio.offset / this.opts.speed : 0
+    this.preRoll = tick === 0 && project.audio && this.opts.listen !== 'transcription' ? project.audio.offset / this.audioRate : 0
     this.segCtx0 += this.preRoll
     if (countIn) {
       const beat = beatTicks(project.score.timeSig)
       const beats = Math.round((countIn * mt) / beat)
       const secPerBeat = countSec / beats
-      for (let i = 0; i < beats; i++) click(ctx, this.metroBus, ctx.currentTime + lead + i * secPerBeat, i % Math.round(mt / beat) === 0, 1)
+      for (let i = 0; i < beats; i++) this.countClicks.push(click(ctx, this.metroBus, ctx.currentTime + lead + i * secPerBeat, i % Math.round(mt / beat) === 0, 1))
       this.countingIn = true
-      setTimeout(() => { this.countingIn = false; this.emit() }, (countSec + lead) * 1000)
+      const request = this.startRequest
+      setTimeout(() => {
+        if (request !== this.startRequest) return
+        this.countClicks = []
+        this.countingIn = false
+        this.emit()
+      }, (countSec + lead) * 1000)
     }
     this.schedTick = tick
     this.noteIdx = this.indexAt(tick)
@@ -659,7 +684,7 @@ class Player {
     this.emit()
   }
 
-  private restartAt(tick: number): void { this.hardStop(); this.play(tick) }
+  private restartAt(tick: number): void { this.hardStop(); this.play(tick, false) }
 
   /** New timeline for every plug-in track, starting now. */
   private startNative(): void {
@@ -684,11 +709,11 @@ class Player {
   /** Start a stem through plug-ins at `time`, from the point that matches `tick`. */
   private cueStem(part: Part, track: NativeTrack, tick: number, time: number, preRoll = 0): void {
     const project = this.project!
-    const stream = this.streams.get(`${part.stem}@${this.opts.transpose}@${this.opts.speed}@${this.ctx!.sampleRate}`)
+    const stream = this.streams.get(`${part.stem}@${this.opts.transpose}@${this.audioRate}@${this.ctx!.sampleRate}`)
     if (!stream || !project.audio) return
     const sr = this.ctx!.sampleRate
     // stream time runs at playback speed; score seconds come from the speed-1 tempo map
-    const audioSec = (this.tm1.tickToSec(tick) + project.audio.offset) / this.opts.speed - preRoll
+    const audioSec = (this.tm1.tickToSec(tick) * this.audioScale + project.audio.offset) / this.audioRate - preRoll
     const offset = Math.round(audioSec * sr)
     const frame = Math.round(time * sr) + Math.max(0, -offset)
     track.file(frame, Math.max(0, offset), stream.ref)
@@ -696,22 +721,23 @@ class Player {
 
   private startTracks(): void {
     if (!this.ctx || !this.project) return
-    const scoreSec = this.tm1.tickToSec(this.segTick0) - this.preRoll * this.opts.speed
+    const scoreSec = this.tm1.tickToSec(this.segTick0) * this.audioScale - this.preRoll * this.audioRate
     const startAt = this.segCtx0 - this.preRoll
+    const request = this.startRequest
     for (const t of this.tracks.values()) {
       const audioSec = scoreSec + (this.project.audio?.offset ?? 0)
       t.el.pause()
-      t.el.playbackRate = this.opts.speed
+      t.el.playbackRate = this.audioRate
       t.el.preservesPitch = true
       t.el.currentTime = Math.max(0, audioSec)
-      const delay = (startAt - this.ctx.currentTime + Math.max(0, -audioSec) / this.opts.speed) * 1000
-      window.setTimeout(() => { if (this.state === 'playing') void t.el.play().catch(() => undefined) }, Math.max(0, delay - 15))
+      const delay = (startAt - this.ctx.currentTime + Math.max(0, -audioSec) / this.audioRate) * 1000
+      window.setTimeout(() => { if (this.state === 'playing' && request === this.startRequest) void t.el.play().catch(() => undefined) }, Math.max(0, delay - 15))
     }
   }
 
   private syncTracks(): void {
     if (!this.ctx || !this.project || this.ctx.currentTime < this.segCtx0 + 0.3) return
-    const scoreSec = this.tm1.tickToSec(this.getTick())
+    const scoreSec = this.tm1.tickToSec(this.getTick()) * this.audioScale
     for (const t of this.tracks.values()) {
       const expected = scoreSec + (this.project.audio?.offset ?? 0)
       if (t.el.paused || t.el.seeking) continue
@@ -719,7 +745,7 @@ class Player {
       // nudge the rate for small drift; jump only when far off
       const drift = t.el.currentTime - expected
       if (Math.abs(drift) > 0.12) t.el.currentTime = expected
-      else t.el.playbackRate = this.opts.speed * (Math.abs(drift) > 0.015 ? 1 - Math.max(-0.03, Math.min(0.03, drift)) : 1)
+      else t.el.playbackRate = Math.max(0.0625, Math.min(16, this.audioRate * (Math.abs(drift) > 0.015 ? 1 - Math.max(-0.03, Math.min(0.03, drift)) : 1)))
     }
   }
 
@@ -778,6 +804,7 @@ class Player {
     if (toTick >= end) {
       if (loop) {
         if (ctx.currentTime < this.segCtx0) return
+        const request = this.startRequest
         const wrapAt = this.ctxAt(loop.b)
         this.beforeWrap = { tick: this.segTick0, time: this.segCtx0, map: this.tm }
         if (this.opts.trainer.on) this.opts.speed = Math.min(this.opts.trainer.to, +(this.opts.speed + this.opts.trainer.step).toFixed(3))
@@ -793,24 +820,28 @@ class Player {
           if (!track) continue
           track.allOff(Math.round(wrapAt * sr))
           if (this.route(part) === 'stemfx') {
-            if (this.streams.has(`${part.stem}@${this.opts.transpose}@${this.opts.speed}@${sr}`)) this.cueStem(part, track, loop.a, wrapAt)
+            if (this.streams.has(`${part.stem}@${this.opts.transpose}@${this.audioRate}@${sr}`)) this.cueStem(part, track, loop.a, wrapAt)
             else {
               // the trainer changed speed: convert in the background, then catch up
               track.file(Math.round(wrapAt * sr), 0, null)
-              void this.streamFor(part).then(() => { if (this.state === 'playing') this.restartAt(this.getTick()) }, () => undefined)
+              void this.streamFor(part).then(() => { if (request === this.startRequest && this.state === 'playing') this.restartAt(this.getTick()) }, () => undefined)
             }
           }
         }
-        window.setTimeout(() => { if (this.state === 'playing') { this.startTracks(); this.emit() } }, Math.max(0, (wrapAt - ctx.currentTime) * 1000 - 30))
+        window.setTimeout(() => { if (request === this.startRequest && this.state === 'playing') { this.startTracks(); this.emit() } }, Math.max(0, (wrapAt - ctx.currentTime) * 1000 - 30))
       } else if (!this.endHandled) {
         this.endHandled = true
-        window.setTimeout(() => { if (this.state === 'playing') { this.stop(); this.emit() } }, Math.max(0, (this.ctxAt(end) - ctx.currentTime) * 1000) + 300)
+        const request = this.startRequest
+        window.setTimeout(() => { if (request === this.startRequest && this.state === 'playing') { this.stop(); this.emit() } }, Math.max(0, (this.ctxAt(end) - ctx.currentTime) * 1000) + 300)
       }
     }
     this.syncTracks()
   }
 
   private hardStop(): void {
+    for (const click of this.countClicks) click.stop()
+    this.countClicks = []
+    this.countingIn = false
     this.startRequest++
     this.preparingFx = false
     if (this.timer) { clearInterval(this.timer); this.timer = null }
@@ -887,6 +918,26 @@ class Player {
     await loadPack(sound)
     const input = partInsert(ctx, sound, this.master)
     pitches.forEach((p, i) => playNote(ctx, input, sound, p, ctx.currentTime + 0.03 + i * 0.12, 1.2, 92))
+  }
+
+  async playPreviewAudio(wav: ArrayBuffer, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return
+    const ctx = this.ensure()
+    const buffer = await ctx.decodeAudioData(wav)
+    if (signal.aborted) return
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(this.master)
+    await new Promise<void>((resolve) => {
+      const stop = () => source.stop()
+      signal.addEventListener('abort', stop, { once: true })
+      source.onended = () => {
+        signal.removeEventListener('abort', stop)
+        source.disconnect()
+        resolve()
+      }
+      source.start()
+    })
   }
 
   /** Audition a single note of fixed length (note entry, fretboard, MIDI keyboard). */

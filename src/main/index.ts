@@ -1,9 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, shell, nativeTheme } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell, nativeTheme, nativeImage } from 'electron'
 import { join, extname, basename } from 'path'
 import fs from 'fs'
 import { Readable } from 'stream'
 import JSZip from 'jszip'
-import type { Project, Settings } from '@shared/types'
+import { TRANSCRIPTION_SOURCES, type Project, type Settings, type TranscriptionSource } from '@shared/types'
 import {
   paths, openLibrary, flush, listEntries, setFavorite, removeProject, listCollections, createCollection, deleteCollection,
   setInCollection, loadProjectFile, saveProjectFile, markOpened, getSettings, setSettings, indexProject, useInstallerEngineRoot, writeAtomic
@@ -157,7 +157,8 @@ async function importPortable(): Promise<string | null> {
   project.id = id
   project.updated = Date.now()
   saveProjectFile(project)
-  indexProject(project, { artwork: fs.existsSync(join(dir, 'artwork.jpg')) ? 'artwork.jpg' : undefined })
+  const cover = fs.readdirSync(dir).find((name) => /^cover-[a-z0-9]+\.jpg$/.test(name))
+  if (cover) indexProject(project, { artwork: cover })
   return id
 }
 
@@ -182,7 +183,39 @@ function registerIpc(): void {
     markOpened(id)
     return p
   })
-  h('project:save', (_e, p: Project) => saveProjectFile(p))
+  h('project:save', (_e, p: Project, analysisComplete = false) => {
+    const disk = loadProjectFile(p.id)
+    if (!disk) throw new Error('Project not found.')
+    if (p.audio && disk.audio?.trimmed !== undefined && p.audio.trimmed === undefined) {
+      p.audio = { ...p.audio, duration: disk.audio.duration, trimmed: disk.audio.trimmed, offset: Math.max(0, p.audio.offset - disk.audio.trimmed) }
+    }
+    if (!analysisComplete && disk.analysis) {
+      if ((disk.analysis.finishedAt ?? 0) > (p.analysis?.finishedAt ?? 0)) {
+        p.score = { ...disk.score, title: p.score.title, composer: p.score.composer }
+        p.audio = disk.audio
+        p.view = disk.view
+        p.analysis = disk.analysis
+      } else p.analysis = { ...disk.analysis, rhythm: p.analysis?.rhythm === undefined ? disk.analysis.rhythm : p.analysis.rhythm }
+    }
+    saveProjectFile(p)
+  })
+  h('project:cover', async (_e, id: string) => {
+    if (!loadProjectFile(id)) throw new Error('Project not found.')
+    const picked = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }] })
+    if (picked.canceled || !picked.filePaths[0]) return false
+    const image = nativeImage.createFromPath(picked.filePaths[0])
+    if (image.isEmpty()) throw new Error('This image could not be opened.')
+    const project = loadProjectFile(id)
+    if (!project) throw new Error('Project not found.')
+    const { width, height } = image.getSize()
+    const scale = Math.min(1, 1024 / Math.max(width, height))
+    const artwork = `cover-${newId().slice(1)}.jpg`
+    const oldArtwork = listEntries().find((entry) => entry.id === id)?.artwork
+    fs.writeFileSync(join(paths.project(id), artwork), image.resize({ width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }).toJPEG(88))
+    indexProject(project, { artwork })
+    if (oldArtwork && /^cover-[a-z0-9]+\.jpg$/.test(oldArtwork)) fs.rmSync(join(paths.project(id), oldArtwork), { force: true })
+    return true
+  })
   h('project:readText', (_e, id: string, rel: string) => fs.readFileSync(paths.inProject(id, rel), 'utf8'))
 
   h('media:pickAudio', async () => {
@@ -237,11 +270,14 @@ function registerIpc(): void {
   }) }))
 
   h('updates:check', () => checkForUpdate())
-  h('updates:install', () => ({ jobId: startJob('update', installUpdate) }))
+  h('updates:install', () => ({ jobId: startJob('update', installUpdate, undefined, { key: 'app-update' }) }))
   ipcMain.on('updates:version', (e) => { e.returnValue = app.getVersion() })
   h('engine:status', (_e, force?: boolean) => engineStatus(!!force))
-  h('engine:install', () => ({ jobId: startJob('install', (ctx) => installEngineJob(ctx)) }))
-  h('engine:process', (_e, id: string) => ({ jobId: startJob('process', (ctx) => processJob(ctx, id)) }))
+  h('engine:install', () => ({ jobId: startJob('install', installEngineJob, undefined, { key: 'engine-install' }) }))
+  h('engine:process', (_e, id: string, sources?: TranscriptionSource[]) => {
+    const selected = sources ? TRANSCRIPTION_SOURCES.filter((source) => sources.includes(source)) : undefined
+    return { jobId: startJob('process', (ctx) => processJob(ctx, id, selected), undefined, { key: `process:${id}`, projectId: id }) }
+  })
 
   h('jobs:cancel', (_e, id: string) => cancelJob(id))
   h('jobs:active', () => activeJobs())

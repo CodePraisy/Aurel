@@ -36,7 +36,7 @@ export function NewCompositionDialog() {
     const timeSig = parseTimeSignature(ts)
     if (!timeSig) return
     const { num, den } = timeSig
-    const score = newScore({ title: title.trim() || 'Untitled', composer, tempo, num, den, keyFifths: key, instruments: parts.length ? parts : ['piano'], measures })
+    const score = newScore({ title: title.trim() || 'Untitled', composer, tempo, num, den, keyFifths: key, instruments: parts.length ? parts : ['piano'], measures, pianoGrandStaff: useApp.getState().settings?.pianoGrandStaff })
     if (tpl === 'Strings') ['Violin I', 'Violin II', 'Viola', 'Cello'].forEach((n, i) => { if (score.parts[i]) { score.parts[i].name = n; if (i === 3) score.parts[i].clef = 'bass' } })
     const p = newProject(score, 'composition')
     p.view = { ...p.view!, mode: useApp.getState().settings?.defaultView ?? 'both' }
@@ -105,7 +105,7 @@ export function YouTubeDialog() {
         <button className="btn-ghost" onClick={close}>Cancel</button>
         {res?.duplicateOf
           ? <button className="btn-primary" onClick={() => { useApp.getState().go({ name: 'studio', projectId: res.duplicateOf! }); close() }}>Open existing</button>
-          : <button className="btn-primary" disabled={!valid || (res !== null && !res.acquirable)} onClick={acquire}>{needsTerms ? 'Agree & import' : 'Import & transcribe'}</button>}
+          : <button className="btn-primary" disabled={!valid || (res !== null && !res.acquirable)} onClick={acquire}>{needsTerms ? 'Agree & import' : 'Download recording'}</button>}
       </>}>
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void check() }}>
         <input className="field" placeholder="https://www.youtube.com/watch?v=…" value={url} onChange={(e) => { setUrl(e.target.value); setRes(null) }} onPaste={() => setTimeout(() => void check(), 50)} autoFocus />

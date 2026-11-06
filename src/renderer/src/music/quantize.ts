@@ -109,7 +109,7 @@ export function detectKey(notes: { p: number; dur: number }[]): { fifths: number
 const MODE_FOR: Partial<Record<InstrumentKind, QuantizeOpts['mode']>> = { vocals: 'melody', bass: 'bass', brass: 'melody', woodwinds: 'melody' }
 const POLY_FOR: Partial<Record<InstrumentKind, number>> = { 'acoustic-guitar': 6, 'clean-guitar': 6, 'distorted-guitar': 4, piano: 10, epiano: 10, organ: 8, synth: 6, strings: 6 }
 
-export function analysisToScore(a: EngineAnalysis, title: string, composer: string, ts = { num: 4, den: 4 }, grid?: { tempo: number; offset: number }): { score: Score; offset: number; key: string } {
+export function analysisToScore(a: EngineAnalysis, title: string, composer: string, ts = { num: 4, den: 4 }, grid?: { tempo: number; offset: number }, pianoGrandStaff = true): { score: Score; offset: number; key: string } {
   const tempo = grid?.tempo ?? (Math.round(a.tempo) || 120)
   const mt = measureTicks(ts)
   const measureSec = (mt / PPQ) * (60 / tempo)
@@ -140,7 +140,7 @@ export function analysisToScore(a: EngineAnalysis, title: string, composer: stri
     const notes = a.notes[stem.name] ?? []
     const isKeys = stem.kind === 'piano' || stem.kind === 'epiano' || stem.kind === 'organ'
     const label = stemLabel(stem.name, stem.kind)
-    if (isKeys) {
+    if (isKeys && pianoGrandStaff) {
       const [rh, lh] = pianoParts(0, mt, stem.kind, label)
       const hi = notes.filter((n) => n.p >= 60)
       const lo = notes.filter((n) => n.p < 60)

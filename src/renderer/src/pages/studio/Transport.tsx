@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Play, Pause, Square, Repeat, Timer, Gauge, Music4, TrendingUp, BookmarkPlus, Trash2, SkipBack, ArrowUpDown, Loader2 } from 'lucide-react'
+import { Play, Pause, Square, Repeat, Timer, Gauge, Music4, TrendingUp, BookmarkPlus, Trash2, SkipBack, ListMusic, ArrowUpDown, Loader2 } from 'lucide-react'
 import type { Listen, Project } from '@shared/types'
 import { player } from '@/audio/player'
 import { useProject } from '@/store/project'
@@ -12,24 +12,26 @@ import { uid } from '@/music/score'
 export function toggleLoop(): void {
   const st = useProject.getState()
   const o = player.opts
-  const r = st.range ?? (st.cursor ? { from: st.cursor.measure, to: st.cursor.measure } : null)
+  if (!st.project || player.endTick <= 0) return
+  const mt = measureTicks(st.project.score.timeSig)
+  const last = Math.max(0, Math.ceil(player.endTick / mt) - 1)
+  const bar = Math.min(last, st.cursor?.measure ?? Math.floor(player.getTick() / mt))
+  const r = st.range ?? { from: bar, to: bar }
   if (o.loopOn && (!st.range || (o.loop && o.loop.from === st.range.from && o.loop.to === st.range.to))) { player.setOptions({ loopOn: false }); return }
-  if (!r) return
   player.setOptions({ loop: r, loopOn: true })
 }
 
 /** Hear the original recording or the transcription, for every part at once. */
-function ListenSwitch() {
-  const o = usePlayer().opts
-  const set = (listen: Listen) => {
-    const next = o.listen === listen ? 'parts' : listen // clicking the lit side again goes back to each part's own setting
-    player.setOptions({ listen: next })
+function ListenSwitch({ solo }: { solo: boolean }) {
+  const { listen } = player.opts
+  const set = (next: Listen) => {
+    player.setOptions({ listen: next, compare: null })
     useProject.getState().patchProject((p) => { p.practice.listen = next })
   }
   return (
-    <div className="seg mr-1" role="group" aria-label="Listen to" title={o.listen === 'parts' ? 'Each part plays its own choice (set on the part). Pick one to switch everything.' : 'Click again to go back to each part’s own setting'}>
-      <button className={cx(o.listen === 'original' && 'on')} aria-pressed={o.listen === 'original'} onClick={() => set('original')}>Original</button>
-      <button className={cx(o.listen === 'transcription' && 'on')} aria-pressed={o.listen === 'transcription'} onClick={() => set('transcription')}>Transcription</button>
+    <div className="seg shrink-0" role="group" aria-label="Playback source">
+      <button className={cx(listen === 'original' && 'on')} aria-pressed={listen === 'original'} title={solo ? 'Play the soloed instruments’ isolated recordings' : 'Play the original recording'} onClick={() => set('original')}>Audio</button>
+      <button className={cx(listen === 'transcription' && 'on')} aria-pressed={listen === 'transcription'} title="Play the notes in the score" onClick={() => set('transcription')}>MIDI</button>
     </div>
   )
 }
@@ -114,7 +116,8 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
         </div>
         <div ref={knobRef} className="absolute top-1/2 h-3.5 w-3.5 -mt-[7px] -ml-[7px] rounded-full bg-accent shadow-[0_0_10px_rgb(var(--accent)/.6)] scale-0 group-hover:scale-100 transition-transform" />
       </div>
-      <div className="h-[58px] flex items-center px-4 gap-2">
+      <div className="min-h-[58px] flex flex-wrap items-center px-4 py-1 gap-2">
+        {project.audio && project.score.parts.length > 0 && <ListenSwitch solo={project.score.parts.some((part) => part.solo)} />}
         <button className="icon-btn" title="Back to start (Home)" onClick={() => player.stop()}><SkipBack size={17} /></button>
         <button className={cx('h-10 w-10 rounded-full flex items-center justify-center bg-accent text-bg hover:brightness-110 transition', p.state === 'playing' && 'pulse')} title={p.preparingFx ? 'Cancel' : 'Play / pause (Space)'} onClick={() => player.toggle()}>
           {p.preparingFx ? <Loader2 size={18} className="animate-spin" /> : p.state === 'playing' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
@@ -129,15 +132,15 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
           <button className="rounded px-1 hover:bg-fg/[0.08] hover:text-accent" title="Edit time signature" onClick={() => onEditRhythm('meter')} onContextMenu={(e) => { e.preventDefault(); onEditRhythm('meter') }}>{project.score.timeSig.num}/{project.score.timeSig.den}</button>
         </div>
 
-        <div className="flex items-center gap-2 ml-2 w-[250px]">
+        <div className="flex items-center gap-2 ml-2 flex-1 min-w-28 max-w-[230px]">
           <Gauge size={15} className="text-muted shrink-0" />
           <Slider value={o.speed} min={0.25} max={2} step={0.05} onChange={setSpeed} title="Playback speed" />
           <button className="text-[12px] tabular-nums w-11 text-right hover:text-accent" title="Reset to 100%" onClick={() => setSpeed(1)}>{Math.round(o.speed * 100)}%</button>
         </div>
 
         <div className="w-px h-6 bg-line mx-2" />
-        <button className={cx('icon-btn', o.loopOn && 'on')} title="Loop selection (L)" onClick={toggleLoop}><Repeat size={16} /></button>
-        <Popover width={250} trigger={(t) => <button className="btn-ghost !h-8 !px-2 text-[12px]" onClick={t}>{o.loop ? `${o.loop.from + 1}–${o.loop.to + 1}` : 'Loops'}</button>}>
+        <button className={cx('icon-btn', o.loopOn && 'on')} aria-label="Loop selection" aria-pressed={o.loopOn} title="Loop selection (L)" onClick={toggleLoop}><Repeat size={16} /></button>
+        <Popover width={250} side="top" trigger={(t, open) => <button className={cx('icon-btn', open && 'on')} aria-label="Saved loops" aria-expanded={open} title={o.loop ? `Saved loops · Bars ${o.loop.from + 1}–${o.loop.to + 1}` : 'Saved loops'} onClick={t}><ListMusic size={16} /></button>}>
           {(close) => (
             <>
               <div className="px-2.5 py-1.5 text-[11.5px] text-faint">Select measures (Shift+click) then press L.</div>
@@ -151,7 +154,7 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
             </>
           )}
         </Popover>
-        <Popover width={260} trigger={(t) => <button className={cx('icon-btn', o.trainer.on && 'on')} title="Speed trainer" onClick={t}><TrendingUp size={16} /></button>}>
+        <Popover width={260} side="top" align="right" trigger={(t) => <button className={cx('icon-btn', o.trainer.on && 'on')} title="Speed trainer" onClick={t}><TrendingUp size={16} /></button>}>
           {() => (
             <div className="p-2.5 space-y-3">
               <Toggle on={o.trainer.on} onChange={(v) => player.setOptions({ trainer: { ...o.trainer, on: v }, loopOn: v ? true : o.loopOn, loop: o.loop ?? (st.cursor ? { from: st.cursor.measure, to: st.cursor.measure } : null) })} label="Gradual tempo training" />
@@ -166,11 +169,10 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
             </div>
           )}
         </Popover>
-        {project.audio && project.score.parts.length > 0 && <ListenSwitch />}
-        <button className={cx('btn-ghost !px-2', o.metronome && '!text-accent !bg-accent/10')} aria-pressed={o.metronome} title="Toggle metronome (M)" onClick={() => player.setOptions({ metronome: !o.metronome })}><Music4 size={16} /> Metronome</button>
+        <button className={cx('icon-btn', o.metronome && 'on')} aria-label="Metronome" aria-pressed={o.metronome} title="Toggle metronome (M)" onClick={() => player.setOptions({ metronome: !o.metronome })}><Music4 size={16} /></button>
         <button className={cx('icon-btn', o.countIn > 0 && 'on')} aria-pressed={o.countIn > 0} title={o.countIn ? `Count-in: ${o.countIn} bar${o.countIn > 1 ? 's' : ''} (click to turn off)` : 'Count-in'} onClick={() => void useApp.getState().updateSettings({ countInOn: !o.countIn })}><Timer size={16} /></button>
-        <button className={cx('btn-ghost !px-2 ml-1 tabular-nums', o.transpose !== 0 && '!text-accent !bg-accent/10')} aria-label="Transpose playback" title="Transpose playback (semitones)" onClick={onTranspose}>
-          <ArrowUpDown size={16} /> {o.transpose > 0 ? `+${o.transpose}` : o.transpose}
+        <button className={cx('icon-btn tabular-nums', o.transpose !== 0 && 'on')} aria-label="Transpose playback" title="Transpose playback (semitones)" onClick={onTranspose}>
+          <ArrowUpDown size={16} />
         </button>
         {o.compare && <span className="chip !text-accent2 ml-1">Comparing: audio L / MIDI R</span>}
         {p.dropouts > 0 && <button className="chip !text-warn ml-1" title="The plug-ins could not keep up and the sound dropped out. Try a larger buffer size in Settings → Audio device. Click to dismiss." onClick={() => { player.dropouts = 0; player.setOptions({}) }}>Audio dropouts: {p.dropouts}</button>}

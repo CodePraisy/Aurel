@@ -1,3 +1,4 @@
+import { INSTRUMENTS, TUNINGS } from './theory'
 import type { NoteEvent, Part } from '@shared/types'
 
 export interface TabPos { string: number; fret: number }
@@ -85,4 +86,31 @@ export function assignTab(p: Part): Map<string, (TabPos | null)[]> {
     }
   }
   return res
+}
+
+/** Rank compatible presets by playability and fret stretch across the written part. */
+export function suggestTuning(part: Part): { name: string; strings: number[] } | null {
+  const events = part.measures.flatMap((measure) => measure.events.filter((event) => !event.rest && event.notes.length))
+  if (!events.length) return null
+  const current = tuningOf(part)
+  const family = INSTRUMENTS[part.kind].family === 'bass' ? 'bass' : 'guitar'
+  const candidates = [
+    { name: 'Current tuning', strings: current },
+    ...Object.values(TUNINGS).filter((preset) => preset.for === family && preset.strings.length === current.length)
+  ]
+  const sample = events.filter((_, index) => index % Math.max(1, Math.ceil(events.length / 160)) === 0)
+    .map((event) => ({ ...event, notes: event.notes.map((note) => ({ pitch: note.pitch })) }))
+  let best = candidates[0]
+  let lowest = Infinity
+  for (const candidate of candidates) {
+    const tuned = { ...part, tuning: candidate.strings }
+    let cost = 0
+    for (const chord of sample) {
+      const positions = assignChord(tuned, chord, 2)
+      cost += chordCost(positions.filter((position): position is TabPos => !!position), 2)
+      cost += positions.filter((position) => !position).length * 1000
+    }
+    if (cost < lowest) { best = candidate; lowest = cost }
+  }
+  return best
 }

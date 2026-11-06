@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Download, Sparkles, ZoomIn, ZoomOut, PanelBottom, Loader2, Check, AlertTriangle, Star, RefreshCw } from 'lucide-react'
-import type { Project } from '@shared/types'
-import { applyRhythmEstimate } from '@shared/rhythm'
+import { TRANSCRIPTION_SOURCES, type Project, type TranscriptionSource } from '@shared/types'
+import { applyRhythmEstimate, detectedBpm } from '@shared/rhythm'
 import { useApp, pendingProcess } from '@/store/app'
 import Rack from './studio/Rack'
 import { useProject } from '@/store/project'
 import { player } from '@/audio/player'
 import { api } from '@/lib/api'
-import { Select } from '@/components/menu'
+import { openContextMenu, Select } from '@/components/menu'
 import { Artwork, cx, Modal, Progress, Popover, fmtTime } from '@/components/ui'
 import { KEY_NAMES, measureTicks, INSTRUMENTS } from '@/music/theory'
 import { rebar, measureCount, transposePart } from '@/music/score'
@@ -72,9 +72,10 @@ function useMidiInput(enabled: boolean) {
 }
 
 export default function Studio({ projectId }: { projectId: string }) {
-  const { go, jobs, processProject, projectRevision, library, refreshLibrary } = useApp()
-  const { project, load, close, saving, setView, patchProject, edit, noteSelection, range, transposeSel } = useProject()
+  const { back, go, jobs, processProject, changeCover, projectRevision, library, refreshLibrary } = useApp()
+  const { project, load, close, saving, setMetadata, setView, patchProject, edit, noteSelection, range, transposeSel } = useProject()
   const [err, setErr] = useState<string | null>(null)
+  const [transcribeOpen, setTranscribeOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [rhythmField, setRhythmField] = useState<RhythmField | null>(null)
   const [rollTarget, setRollTarget] = useState<{ partId: string; eventId: string } | null>(null)
@@ -95,12 +96,23 @@ export default function Studio({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (rev === firstRev.current) return
     firstRev.current = rev
-    void api.project.load(projectId).then((p) => useProject.getState().replace(p))
+    let current = true
+    void api.project.load(projectId).then((p) => {
+      const editor = useProject.getState()
+      if (!current || editor.project?.id !== projectId) return
+      if (p.analysis?.status !== 'done') {
+        const next = { ...editor.project, analysis: p.analysis }
+        useProject.setState({ project: next })
+        return
+      }
+      editor.replace({ ...p, score: { ...p.score, title: editor.project.score.title, composer: editor.project.score.composer } })
+    })
+    return () => { current = false }
   }, [rev, projectId])
 
   const onToggleLoop = useCallback(() => toggleLoop(), [])
   const rackOpen = useProject((x) => !!x.rackPart)
-  useStudioKeys(!!project && !exportOpen && !rackOpen && !rhythmField && !rollTarget && !transposeTarget, onToggleLoop)
+  useStudioKeys(!!project && !transcribeOpen && !exportOpen && !rackOpen && !rhythmField && !rollTarget && !transposeTarget, onToggleLoop)
   useMidiInput(!!project)
 
   if (err) return <div className="h-full flex flex-col items-center justify-center gap-3 text-muted"><AlertTriangle className="text-bad" />{err}<button className="btn-soft" onClick={() => go({ name: 'library' })}>Back to library</button></div>
@@ -136,10 +148,16 @@ export default function Studio({ projectId }: { projectId: string }) {
       st.setRange(null)
     }
   }
-  const setTempo = (bpm: number) => {
+  const setTempo = (bpm: number, linkAudio: boolean) => {
     if (!Number.isFinite(bpm) || bpm <= 0) return
-    const tempo = Math.max(20, Math.min(300, bpm))
-    if (tempo !== s.tempo) edit((sc) => { sc.tempo = tempo })
+    const tempo = Math.max(20, Math.min(300, Math.round(bpm)))
+    patchProject((next) => {
+      if (next.audio) {
+        next.audio.referenceTempo = detectedBpm(next) ?? next.audio.referenceTempo ?? next.score.tempo
+        next.audio.tempoLinked = linkAudio
+      }
+      next.score.tempo = tempo
+    }, tempo !== s.tempo)
   }
   const editOnRightClick = (field: RhythmField) => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -151,8 +169,12 @@ export default function Studio({ projectId }: { projectId: string }) {
     <div className="h-full flex flex-col">
       {/* top bar */}
       <header className="h-12 shrink-0 flex items-center gap-2 pl-2 pr-[150px] border-b border-line drag">
-        <button className="icon-btn no-drag" title="Back" onClick={() => go({ name: 'library' })}><ArrowLeft size={17} /></button>
-        <Artwork id={p.id} artwork={entry?.artwork ?? null} title={s.title} size={30} className="no-drag" />
+        <button className="icon-btn no-drag" title="Back" onClick={() => back({ name: 'library' })}><ArrowLeft size={17} /></button>
+        <button className="no-drag shrink-0" aria-label="Change cover photo" title="Change cover photo"
+          onClick={() => void changeCover(p.id)}
+          onContextMenu={(event) => openContextMenu(event, [{ label: 'Change cover photo…', onClick: () => void changeCover(p.id) }])}>
+          <Artwork id={p.id} artwork={entry?.artwork ?? null} title={s.title} size={30} />
+        </button>
         <Popover width={330} trigger={(t) => (
           <button className="no-drag text-left min-w-0 max-w-[340px] px-1.5 py-0.5 rounded-md hover:bg-fg/[0.05]" onClick={t}>
             <div className="text-[13.5px] font-medium truncate leading-tight">{s.title}</div>
@@ -161,10 +183,10 @@ export default function Studio({ projectId }: { projectId: string }) {
         )}>
           {(closeDetails) => (
             <div className="p-2 space-y-2.5 no-drag">
-              <label className="block"><div className="label mb-1">Title</div><input className="field !h-8" defaultValue={s.title} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== s.title) { edit((sc) => { sc.title = v }); setTimeout(refreshLibrary, 800) } }} /></label>
-              <label className="block"><div className="label mb-1">{p.kind === 'composition' ? 'Composer' : 'Artist'}</div><input className="field !h-8" defaultValue={s.composer} onBlur={(e) => { if (e.target.value !== s.composer) { edit((sc) => { sc.composer = e.target.value }); setTimeout(refreshLibrary, 800) } }} /></label>
+              <label className="block"><div className="label mb-1">Title</div><input className="field !h-8" value={s.title} onChange={(e) => setMetadata({ title: e.target.value })} onBlur={() => { if (!s.title.trim()) setMetadata({ title: 'Untitled' }); void useProject.getState().save().then(refreshLibrary).catch(() => undefined) }} /></label>
+              <label className="block"><div className="label mb-1">{p.kind === 'composition' ? 'Composer' : 'Artist'}</div><input className="field !h-8" value={s.composer} onChange={(e) => setMetadata({ composer: e.target.value })} onBlur={() => void useProject.getState().save().then(refreshLibrary).catch(() => undefined)} /></label>
               <div className="grid grid-cols-3 gap-2">
-                <label><div className="label mb-1">Tempo</div><input type="number" className="field !h-8" key={s.tempo} defaultValue={s.tempo} min={20} max={300} step="any" onBlur={(e) => setTempo(+e.target.value)} /></label>
+                <div><div className="label mb-1">Tempo</div><button className="field !h-8 text-left" onClick={() => { closeDetails(); setRhythmField('tempo') }}>{s.tempo} BPM</button></div>
                 <label><div className="label mb-1">Key</div>
                   <Select value={s.keyFifths} onChange={(v) => edit((sc) => { sc.keyFifths = v })} options={KEY_NAMES.map((k, i) => ({ value: i - 7, label: k }))} />
                 </label>
@@ -184,7 +206,7 @@ export default function Studio({ projectId }: { projectId: string }) {
                     <button className="btn-ghost !h-7 !px-2 flex-1" title="Shift by one beat" onClick={() => patchProject((pp) => { pp.audio!.offset = Math.max(0, pp.audio!.offset - 60 / s.tempo) })}>− 1 beat</button>
                     <button className="btn-ghost !h-7 !px-2 flex-1" onClick={() => patchProject((pp) => { pp.audio!.offset = pp.audio!.offset + 60 / s.tempo })}>+ 1 beat</button>
                   </div>
-                  {p.analysis?.detectedKey && <p className="text-[11px] text-faint mt-2">Detected: {p.analysis.detectedTempo?.toFixed(1)} BPM, {p.analysis.detectedKey}{p.analysis.device ? ` · processed on ${p.analysis.device.toUpperCase()}` : ''}</p>}
+                  {p.analysis?.detectedKey && <p className="text-[11px] text-faint mt-2">Detected: {detectedBpm(p)} BPM, {p.analysis.detectedKey}{p.analysis.device ? ` · processed on ${p.analysis.device.toUpperCase()}` : ''}</p>}
                 </div>
               )}
             </div>
@@ -205,7 +227,7 @@ export default function Studio({ projectId }: { projectId: string }) {
           </div>
         )}
         {p.audio && !job && !installJob && hasParts && (
-          <button className={cx('no-drag', status === 'done' ? 'btn-soft' : 'btn-primary pulse')} onClick={() => processProject(p.id)} title="Separate instruments and transcribe">
+          <button className={cx('no-drag', status === 'done' ? 'btn-soft' : 'btn-primary pulse')} onClick={() => setTranscribeOpen(true)} title="Separate instruments and transcribe">
             <Sparkles size={15} className={status === 'done' ? 'text-accent' : ''} /> {status === 'done' ? 'Re-transcribe' : 'Transcribe'}
           </button>
         )}
@@ -248,7 +270,7 @@ export default function Studio({ projectId }: { projectId: string }) {
               )}
             </>
           ) : (
-            <EmptyStudio project={p} running={!!job || !!installJob} onEditRhythm={setRhythmField} />
+            <EmptyStudio project={p} running={!!job || !!installJob} onTranscribe={() => setTranscribeOpen(true)} onEditRhythm={setRhythmField} />
           )}
           {hasParts && p.audio && <div className="shrink-0 border-t border-line px-4 py-1 bg-panel/30"><Waveform project={p} height={34} /></div>}
         </section>
@@ -272,6 +294,10 @@ export default function Studio({ projectId }: { projectId: string }) {
         })
         setTransposeTarget(null)
       }} />}
+      {transcribeOpen && <TranscriptionDialog onClose={() => setTranscribeOpen(false)} onStart={(sources) => {
+        setTranscribeOpen(false)
+        void processProject(p.id, sources)
+      }} />}
       <ExportDialog project={p} open={exportOpen} onClose={() => setExportOpen(false)} />
       <Rack />
     </div>
@@ -279,9 +305,11 @@ export default function Studio({ projectId }: { projectId: string }) {
 }
 
 function RhythmEditor({ field, project, onClose, setTempo, setTimeSig }: {
-  field: RhythmField; project: Project; onClose: () => void; setTempo: (bpm: number) => void; setTimeSig: (num: number, den: number) => void
+  field: RhythmField; project: Project; onClose: () => void; setTempo: (bpm: number, linkAudio: boolean) => void; setTimeSig: (num: number, den: number) => void
 }) {
-  const [bpm, setBpm] = useState(String(project.score.tempo))
+  const [bpm, setBpm] = useState(String(Math.round(project.score.tempo)))
+  const [linkAudio, setLinkAudio] = useState(project.audio?.tempoLinked ?? false)
+  const detected = detectedBpm(project)
   const [meter, setMeter] = useState(`${project.score.timeSig.num}/${project.score.timeSig.den}`)
   const tempo = field === 'tempo'
   const timeSig = parseTimeSignature(meter)
@@ -289,12 +317,16 @@ function RhythmEditor({ field, project, onClose, setTempo, setTimeSig }: {
     <Modal open onClose={onClose} title={tempo ? 'Change tempo' : 'Change time signature'} width={330}>
       <form onSubmit={(e) => {
         e.preventDefault()
-        if (tempo) setTempo(Number(bpm))
+        if (tempo) setTempo(Number(bpm), linkAudio)
         else if (timeSig) setTimeSig(timeSig.num, timeSig.den)
         onClose()
       }}>
         {tempo ? (
-          <label><div className="label mb-1.5">Score tempo (BPM)</div><input type="number" className="field" min={20} max={300} step="any" value={bpm} onChange={(e) => setBpm(e.target.value)} autoFocus onFocus={(e) => e.target.select()} required /></label>
+          <div className="space-y-3">
+            <label className="block"><div className="label mb-1.5">Score tempo (BPM)</div><input type="number" className="field" min={20} max={300} step={1} value={bpm} onChange={(e) => setBpm(e.target.value)} autoFocus onFocus={(e) => e.target.select()} required /></label>
+            {detected !== undefined && <button type="button" className="btn-soft" onClick={() => setBpm(String(detected))}>Use detected BPM ({detected})</button>}
+            {project.audio && <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={linkAudio} onChange={(e) => setLinkAudio(e.target.checked)} /> Change recording speed with BPM</label>}
+          </div>
         ) : (
           <div><div className="label mb-1.5">Beats per measure / note value</div><TimeSignaturePicker value={meter} onChange={setMeter} /></div>
         )}
@@ -307,8 +339,32 @@ function RhythmEditor({ field, project, onClose, setTempo, setTimeSig }: {
   )
 }
 
-function EmptyStudio({ project, running, onEditRhythm }: { project: Project; running: boolean; onEditRhythm: (field: RhythmField) => void }) {
-  const { engine, processProject, toast } = useApp()
+function TranscriptionDialog({ onClose, onStart }: { onClose: () => void; onStart: (sources?: TranscriptionSource[]) => void }) {
+  const [auto, setAuto] = useState(true)
+  const [selected, setSelected] = useState<TranscriptionSource[]>([])
+  const labels = { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano / keys', other: 'Other instruments' }
+  return (
+    <Modal open title="Transcribe recording" onClose={onClose} width={420} footer={<>
+      <button className="btn-ghost" onClick={onClose}>Cancel</button>
+      <button className="btn-primary" disabled={!auto && !selected.length} onClick={() => onStart(auto ? undefined : selected)}>Start transcription</button>
+    </>}>
+      <div className="seg w-fit mb-3" role="group" aria-label="Instrument detection">
+        <button aria-pressed={auto} className={cx(auto && 'on')} onClick={() => setAuto(true)}>Detect automatically</button>
+        <button aria-pressed={!auto} className={cx(!auto && 'on')} onClick={() => setAuto(false)}>Choose instruments</button>
+      </div>
+      {auto ? <p className="text-sm text-muted">Aurel finds the instruments in the recording and transcribes the audible tracks.</p> :
+        <div className="grid grid-cols-2 gap-3">
+          {TRANSCRIPTION_SOURCES.map((source) => <label key={source} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={selected.includes(source)} onChange={(event) => setSelected((current) =>
+              event.target.checked ? [...current, source] : current.filter((item) => item !== source))} />{labels[source]}
+          </label>)}
+        </div>}
+    </Modal>
+  )
+}
+
+function EmptyStudio({ project, running, onTranscribe, onEditRhythm }: { project: Project; running: boolean; onTranscribe: () => void; onEditRhythm: (field: RhythmField) => void }) {
+  const { engine, toast } = useApp()
   const st = useProject()
   const [checkingRhythm, setCheckingRhythm] = useState(false)
   const rhythm = project.analysis?.rhythm
@@ -333,8 +389,8 @@ function EmptyStudio({ project, running, onEditRhythm }: { project: Project; run
             <div className="font-display text-[30px] leading-tight mb-2">Turn this recording into sheet music & tabs</div>
             <p className="text-muted max-w-[560px] leading-relaxed mb-5">Aurel separates every instrument, then writes editable notation for each one. It runs on your computer{engine?.cuda ? ` using your ${engine.gpuName ?? 'GPU'}` : ''}; a typical song takes {engine?.cuda ? '1–2' : '3–8'} minutes.</p>
             <div className="flex items-center gap-3 flex-wrap">
-              <button className="btn-primary !h-11 !px-6 !text-[15px] pulse" disabled={checkingRhythm} onClick={() => processProject(project.id)}><Sparkles size={18} /> Transcribe this song</button>
-              <button className="chip !h-7 hover:text-fg" title="Edit score tempo" onClick={() => onEditRhythm('tempo')} onContextMenu={(e) => { e.preventDefault(); onEditRhythm('tempo') }}>{rhythm ? `${rhythm.bpm} BPM estimated` : rhythm === null ? 'Tempo unclear' : 'Tempo not verified'}</button>
+              <button className="btn-primary !h-11 !px-6 !text-[15px] pulse" disabled={checkingRhythm} onClick={onTranscribe}><Sparkles size={18} /> Transcribe this song</button>
+              <button className="chip !h-7 hover:text-fg" title="Edit score tempo" onClick={() => onEditRhythm('tempo')} onContextMenu={(e) => { e.preventDefault(); onEditRhythm('tempo') }}>{rhythm ? `${Math.round(rhythm.bpm)} BPM estimated` : rhythm === null ? 'Tempo unclear' : 'Tempo not verified'}</button>
               <button className="chip !h-7 hover:text-fg" title="Edit time signature" onClick={() => onEditRhythm('meter')} onContextMenu={(e) => { e.preventDefault(); onEditRhythm('meter') }}>{rhythm?.timeSig ? `${rhythm.timeSig.num}/${rhythm.timeSig.den} estimated` : rhythm === undefined ? 'Meter not verified' : 'Meter unclear'}</button>
               <button className="btn-soft !h-7" disabled={checkingRhythm} onClick={() => void recheckRhythm()}><RefreshCw size={13} className={checkingRhythm ? 'animate-spin' : ''} /> {checkingRhythm ? 'Checking…' : 'Recheck tempo & meter'}</button>
               {!engine?.ready && <span className="text-[12px] text-faint">First run downloads the AI engine (~3–5 GB) automatically.</span>}

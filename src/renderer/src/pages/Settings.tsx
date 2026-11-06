@@ -174,7 +174,7 @@ export default function SettingsPage({ section }: { section?: string }) {
               <h2 className="font-display text-[22px] mb-4">Playback</h2>
               <Row title="Count-in" desc="Clicks before playback starts. Also on the transport bar.">
                 <div className="flex items-center gap-3">
-                  <div className="seg">{[1, 2].map((n) => <button key={n} disabled={!s.countInOn} className={cx(s.countInOn && s.countInBars === n && 'on')} onClick={() => set({ countInBars: n })}>{n} bar{n > 1 ? 's' : ''}</button>)}</div>
+                  <div className="seg">{[1, 2, 4].map((n) => <button key={n} disabled={!s.countInOn} className={cx(s.countInOn && s.countInBars === n && 'on')} onClick={() => set({ countInBars: n })}>{n} bar{n > 1 ? 's' : ''}</button>)}</div>
                   <Toggle on={s.countInOn} onChange={(v) => set({ countInOn: v })} />
                 </div>
               </Row>
@@ -204,6 +204,7 @@ export default function SettingsPage({ section }: { section?: string }) {
                 <div className="seg">{(['write', 'play'] as const).map((m) => <button key={m} className={cx(s.inputMode === m && 'on')} onClick={() => { set({ inputMode: m }); useProject.getState().setInputMode(m) }}>{m === 'write' ? 'Write' : 'Play only'}</button>)}</div>
               </Row>
               <Row title="Hear notes while writing" desc="Play each note as you enter or change it."><Toggle on={s.noteInputPreview} onChange={(v) => set({ noteInputPreview: v })} /></Row>
+              <Row title="Use two staves for keyboard instruments" desc="New piano, E-Piano and organ parts use treble and bass staves."><Toggle on={s.pianoGrandStaff} onChange={(v) => set({ pianoGrandStaff: v })} /></Row>
               <Row title="Default notation view" desc="Used when a song is opened for the first time.">
                 <div className="seg">{(['staff', 'tab', 'both'] as const).map((v) => <button key={v} className={cx(s.defaultView === v && 'on')} onClick={() => set({ defaultView: v })}>{v === 'staff' ? 'Sheet' : v === 'tab' ? 'Tab' : 'Both'}</button>)}</div>
               </Row>

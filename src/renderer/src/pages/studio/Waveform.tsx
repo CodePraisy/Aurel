@@ -9,7 +9,7 @@ export default function Waveform({ project, height = 120 }: { project: Project; 
   const head = useRef<HTMLDivElement>(null)
   const [peaks, setPeaks] = useState<number[] | null>(null)
   const dur = project.audio?.duration ?? 0
-  useEffect(() => { void api.media.peaks(project.id).then(setPeaks) }, [project.id])
+  useEffect(() => { void api.media.peaks(project.id).then(setPeaks) }, [project.id, project.audio?.trimmed])
 
   useEffect(() => {
     const c = canvas.current
@@ -41,7 +41,7 @@ export default function Waveform({ project, height = 120 }: { project: Project; 
     const tm = tempoMap(project.score, 1)
     const f = () => {
       if (head.current && dur) {
-        const sec = (project.audio?.offset ?? 0) + tm.tickToSec(player.getTick())
+        const sec = (project.audio?.offset ?? 0) + tm.tickToSec(player.getTick()) * player.audioScale
         head.current.style.left = `${Math.min(100, (sec / dur) * 100)}%`
       }
       raf = requestAnimationFrame(f)
@@ -53,7 +53,7 @@ export default function Waveform({ project, height = 120 }: { project: Project; 
   const seek = (e: React.MouseEvent) => {
     const r = e.currentTarget.getBoundingClientRect()
     const sec = ((e.clientX - r.left) / r.width) * dur - (project.audio?.offset ?? 0)
-    player.seek(Math.max(0, tempoMap(project.score, 1).secToTick(sec)))
+    player.seek(Math.max(0, tempoMap(project.score, 1).secToTick(sec / player.audioScale)))
   }
 
   return (

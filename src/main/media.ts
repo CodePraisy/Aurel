@@ -1,6 +1,7 @@
 import fs from 'fs'
 import { join, basename, extname } from 'path'
 import crypto from 'crypto'
+import { pipeline } from 'node:stream/promises'
 import { net } from 'electron'
 import type { Project } from '@shared/types'
 import { applyRhythmEstimate } from '@shared/rhythm'
@@ -166,6 +167,11 @@ export async function importAudioJob(ctx: JobCtx, file: string, allowDuplicate: 
     p.audio!.sourceUrl = file
     ctx.progress('Detecting tempo & time signature', -1)
     applyTempoGuess(p, join(dir, 'audio', 'original.wav'))
+    const existing = allowDuplicate ? undefined : findDuplicate('hash', hash)
+    if (existing) {
+      fs.rmSync(dir, { recursive: true, force: true })
+      return { projectId: existing, duplicate: true }
+    }
     saveProjectFile(p)
     indexProject(p, { hash, source: basename(file) })
     return { projectId: id }
@@ -187,29 +193,34 @@ export async function importUrlJob(ctx: JobCtx, url: string): Promise<{ projectI
   if (!/audio|video|octet-stream/.test(type)) throw new Error(`The link does not point to an audio file (content-type: ${type || 'unknown'}).`)
   const total = Number(res.headers.get('content-length') ?? 0)
   const ext = extname(u.pathname).slice(1).toLowerCase() || 'bin'
-  const tmp = join(paths.data, 'downloads', `${Date.now()}.${AUDIO_EXT.includes(ext) ? ext : 'bin'}`)
+  const tmp = join(paths.data, 'downloads', `${ctx.id}.${AUDIO_EXT.includes(ext) ? ext : 'bin'}`)
   fs.mkdirSync(join(tmp, '..'), { recursive: true })
-  const out = fs.createWriteStream(tmp)
   let got = 0
   const reader = res.body.getReader()
   try {
-    for (;;) {
-      ctx.check()
-      const { done, value } = await reader.read()
-      if (done) break
-      got += value.length
-      out.write(value)
-      ctx.progress('Downloading', total ? got / total : -1, `${(got / 1e6).toFixed(1)} MB`)
+    try {
+      await pipeline(async function* () {
+        for (;;) {
+          ctx.check()
+          const { done, value } = await reader.read()
+          if (done) break
+          got += value.length
+          ctx.progress('Downloading', total ? got / total : -1, `${(got / 1e6).toFixed(1)} MB`)
+          yield value
+        }
+      }, fs.createWriteStream(tmp))
+    } finally {
+      await reader.cancel().catch(() => undefined)
     }
-  } finally {
-    await new Promise((r) => out.end(r))
-  }
-  try {
     const r = await importAudioJob(ctx, tmp, false)
     if (!r.duplicate) {
       const pj = JSON.parse(fs.readFileSync(join(paths.project(r.projectId), 'project.json'), 'utf8')) as Project
       pj.audio!.sourceUrl = url
-      if (pj.score.title.match(/^\d+$/)) pj.score.title = decodeURIComponent(basename(u.pathname, extname(u.pathname))) || 'Imported audio'
+      if (pj.score.title === ctx.id) {
+        const name = basename(u.pathname, extname(u.pathname))
+        try { pj.score.title = decodeURIComponent(name) || 'Imported audio' }
+        catch { pj.score.title = name || 'Imported audio' }
+      }
       saveProjectFile(pj)
       indexProject(pj, { source: url })
     }

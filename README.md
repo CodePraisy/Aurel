@@ -64,6 +64,18 @@ Download `Aurel-0.2.0-Windows-x64-Portable.exe` and run it from any folder or a 
 
 ---
 
+## Changes on main
+
+These changes are available when running the current source. The downloads above are the published v0.2.0 builds.
+
+- **Background jobs** run side by side for different recordings. Click a download or transcription card to see its progress, then open the recording or score from there. Repeated transcription requests for the same project share one job.
+- **Transcription** offers **Detect automatically** or a choice of vocals, drums, bass, guitar, piano or other instruments. The choices filter the separated tracks. Detected BPM uses whole numbers. Open the tempo control to restore the detected BPM or choose whether tempo edits also change the speed of the recording.
+- **Studio** has a shared **Audio / MIDI** control at the bottom of transcription projects. With a part soloed, Audio plays its isolated stem and MIDI plays its notes. Parts without an isolated stem are silent in Audio solo mode. The transport also offers saved loops and up to four bars of count-in.
+- **Composing** supports **Ctrl+S** (or **Cmd+S** on Mac), live title and composer edits, and cover photos from the project’s cover or the library context menu. Use the Back button to return from Settings to the score. The score adds space around high and low notes. In **Settings → Editor**, choose whether new piano, E-Piano and organ parts default to one or two staves.
+- **Guitar and bass** support custom open-string pitches. **Suggest tuning** ranks compatible presets by how playable the written notes are.
+- **VST3 on Windows** can use installed instruments as named presets with an instrument type under **Settings → Instrument sounds → Your instruments**. In Studio, double-click a VST3 track’s name or open its context menu to edit the plug-in. **Settings → Default effects** plays major and minor scales in a random key through the draft chain, with a Stop button.
+- **Updates** are checked on first launch and at startup by default. The small version widget at the bottom left can also check on demand and offers to install a newer release when a compatible download is available.
+
 ## Features in more detail
 
 ### Transcription

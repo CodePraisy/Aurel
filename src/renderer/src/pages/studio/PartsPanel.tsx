@@ -11,6 +11,8 @@ import { openContextMenu, type MenuEntry } from '@/components/menu'
 import { uid } from '@/music/score'
 import { ADDABLE } from '../Dialogs'
 import VstPicker from './VstPicker'
+import TuningEditor from './TuningEditor'
+import { api } from '@/lib/api'
 
 export function familyIcon(kind: InstrumentKind, size = 15) {
   const f = INSTRUMENTS[kind].family
@@ -43,16 +45,6 @@ function PluginBadge({ part }: { part: Part }) {
   )
 }
 
-/** A part's own Audio/MIDI choice; it hands control back from the bottom-bar switch. */
-function setPartPlayback(id: string, playback: Part['playback']): void {
-  const st = useProject.getState()
-  if (player.opts.listen !== 'parts') {
-    player.setOptions({ listen: 'parts' })
-    st.patchProject((p) => { p.practice.listen = 'parts' })
-  }
-  useProject.getState().updatePart(id, { playback })
-}
-
 function usePlayerOpts() {
   const [, force] = useState(0)
   useEffect(() => player.subscribe(() => force((x) => x + 1)), [])
@@ -65,10 +57,35 @@ export default function PartsPanel({ project }: { project: Project }) {
   const soloFollowsView = useApp((s) => s.settings?.soloFollowsView)
   const view = project.view?.part ?? 'all'
   const [renaming, setRenaming] = useState<string | null>(null)
+  const [tuningPart, setTuningPart] = useState<string | null>(null)
+  const vstPresets = useApp((state) => state.settings?.vstInstruments) ?? []
   const [addingVst, setAddingVst] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null)
   const parts = project.score.parts
+  const tuningTarget = parts.find((part) => part.id === tuningPart)
+  const editVst = async (part: Part) => {
+    const plugin = part.vstInstrument
+    if (!plugin) return
+    const { toast } = useApp.getState()
+    try {
+      const liveTrack = player.route(part) === 'vsti' ? player.trackFor(part.id) : null
+      const configuration = await api.vst.edit(liveTrack, 'instrument', plugin, plugin.plugin.name)
+      const editor = useProject.getState()
+      if (editor.project?.id === project.id) {
+        const current = editor.project.score.parts.find((candidate) => candidate.id === part.id)
+        if (current?.vstInstrument?.plugin.id !== plugin.plugin.id) return
+        editor.updatePart(part.id, { vstInstrument: configuration })
+        await editor.save()
+      } else if (!liveTrack) {
+        const saved = await api.project.load(project.id)
+        const current = saved.score.parts.find((candidate) => candidate.id === part.id)
+        if (current?.vstInstrument?.plugin.id !== plugin.plugin.id) return
+        current.vstInstrument = configuration
+        await api.project.save(saved)
+      }
+    } catch (error) { toast((error as Error).message, 'error') }
+  }
 
   const selectPart = (p: Part | 'all') => {
     st.patchProject((next) => {
@@ -87,9 +104,13 @@ export default function PartsPanel({ project }: { project: Project }) {
 
   const addMenu: MenuEntry = { label: 'Add instrument', icon: <Plus size={14} />, submenu: [
     ...ADDABLE.map((k) => ({ label: INSTRUMENTS[k].label, onClick: () => st.addPart(k) })),
-    { separator: true }, { label: 'Add VST3 instrument…', onClick: () => setAddingVst(true) }
+    { separator: true },
+    ...vstPresets.map((preset) => ({ label: preset.name, hint: 'VST3', onClick: () => st.addPart(preset.kind, { name: preset.name, vstInstrument: preset.configuration }) })),
+    { label: 'Add VST3 instrument…', onClick: () => setAddingVst(true) }
   ] }
   const partMenu = (p: Part): MenuEntry[] => [
+    ...(p.vstInstrument ? [{ label: 'Open plug-in editor…', onClick: () => void editVst(p) }] : []),
+    ...(isFretted(p.kind) ? [{ label: 'Custom tuning…', onClick: () => setTuningPart(p.id) }] : []),
     { label: 'Rename', icon: <Pencil size={14} />, onClick: () => setRenaming(p.id) },
     { label: 'Sound & effects…', icon: <SlidersHorizontal size={14} />, onClick: () => useProject.setState({ rackPart: p.id }) },
     { label: 'Instrument type', icon: familyIcon(p.kind, 14), submenu: ADDABLE.map((k) => ({ label: INSTRUMENTS[k].label, checked: k === p.kind, onClick: () => { const def = INSTRUMENTS[k]; st.updatePart(p.id, { kind: k, sound: undefined, clef: p.group ? p.clef : def.clef, tuning: def.tuning ? [...def.tuning] : undefined }) } })) },
@@ -117,6 +138,7 @@ export default function PartsPanel({ project }: { project: Project }) {
         <Popover align="right" width={210} trigger={(t) => <button className="icon-btn !h-7 !w-7" title="Add instrument" onClick={t}><Plus size={15} /></button>}>
           {(close) => <>
             <MenuItem onClick={() => { close(); setAddingVst(true) }}>Add VST3 instrument…</MenuItem>
+            {vstPresets.map((preset) => <MenuItem key={preset.id} hint="VST3" onClick={() => { st.addPart(preset.kind, { name: preset.name, vstInstrument: preset.configuration }); close() }}>{preset.name}</MenuItem>)}
             {ADDABLE.map((k) => <MenuItem key={k} icon={familyIcon(k, 14)} onClick={() => { st.addPart(k); close() }}>{INSTRUMENTS[k].label}</MenuItem>)}
           </>}
         </Popover>
@@ -192,32 +214,31 @@ export default function PartsPanel({ project }: { project: Project }) {
                   {renaming === p.id ? (
                     <input autoFocus className="field !h-6 !px-1.5 !text-[12.5px]" defaultValue={p.name} onBlur={(e) => { st.updatePart(p.id, { name: e.target.value.trim() || p.name }); setRenaming(null) }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(null) }} />
                   ) : (
-                    <div className="text-[13px] font-medium truncate cursor-default" onDoubleClick={() => setRenaming(p.id)}>{p.name}</div>
+                    <div className="text-[13px] font-medium truncate cursor-default" onDoubleClick={() => p.vstInstrument ? void editVst(p) : setRenaming(p.id)} title={p.vstInstrument ? 'Double-click to open plug-in editor' : 'Double-click to rename'}>{p.name}</div>
                   )}
                   <div className="flex items-center gap-1.5 text-[11px] text-faint">
-                    <span className="truncate">{p.vstInstrument?.plugin.name ?? soundLabel(soundFor(p))}</span>
+                    {p.vstInstrument ? <button className="truncate hover:text-accent" title="Open plug-in editor" onClick={(event) => { event.stopPropagation(); void editVst(p) }}>{p.vstInstrument.plugin.name}</button> :
+                      <span className="truncate">{soundLabel(soundFor(p))}</span>}
                     <PluginBadge part={p} />
                     {p.classification && <Confidence value={p.classification.confidence} />}
                   </div>
                 </div>
                 <button className={cx('icon-btn !h-6 !w-6 text-[11px] font-bold', p.mute && 'on !text-bad !bg-bad/10')} title="Mute" onClick={() => st.updatePart(p.id, { mute: !p.mute })}>M</button>
                 <button className={cx('icon-btn !h-6 !w-6 text-[11px] font-bold', p.solo && 'on')} aria-pressed={p.solo} title={p.solo ? 'Unsolo' : 'Solo'} onClick={() => toggleSolo(p)}>S</button>
-                <PartMenu part={p} onRename={() => setRenaming(p.id)} compare={opts.compare === p.id} />
+                <PartMenu part={p} onRename={() => setRenaming(p.id)} compare={opts.compare === p.id} onEditVst={() => void editVst(p)} onCustomTuning={() => setTuningPart(p.id)} />
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <Slider value={p.volume} min={0} max={1} onChange={(v) => st.updatePart(p.id, { volume: v })} title="Volume" />
-                {p.stem && (
-                  <div className="seg !p-[1px] shrink-0">
-                    <button className={cx('!h-5 !px-1.5 !text-[10.5px]', opts.listen === 'parts' && p.playback === 'audio' && 'on')} title={opts.listen === 'parts' ? 'Play the AI-isolated recording' : 'The Original / Transcription switch in the bottom bar is deciding. Click to choose per part again.'} onClick={() => setPartPlayback(p.id, 'audio')}>Audio</button>
-                    <button className={cx('!h-5 !px-1.5 !text-[10.5px]', opts.listen === 'parts' && p.playback === 'midi' && 'on')} title={opts.listen === 'parts' ? 'Play the transcribed notes' : 'The Original / Transcription switch in the bottom bar is deciding. Click to choose per part again.'} onClick={() => setPartPlayback(p.id, 'midi')}>MIDI</button>
-                  </div>
-                )}
               </div>
             </div>
           )
         })}
         {parts.length === 0 && <p className="text-faint text-[12px] px-2.5 py-2 leading-relaxed">No notation parts yet. Transcribe with AI or add an instrument to write your own part along with the recording.</p>}
       </div>
+      {tuningTarget && <TuningEditor key={tuningTarget.id} part={tuningTarget} onClose={() => setTuningPart(null)} onApply={(tuning) => {
+        st.edit((score) => { const part = score.parts.find((candidate) => candidate.id === tuningTarget.id); if (part) part.tuning = tuning })
+        setTuningPart(null)
+      }} />}
       {addingVst && <Modal open title="Add VST3 instrument" onClose={() => setAddingVst(false)} width={420}>
         <VstPicker kind="instrument" onPick={(configuration) => {
           st.addPart('synth', { name: configuration.plugin.name, vstInstrument: configuration })
@@ -228,7 +249,7 @@ export default function PartsPanel({ project }: { project: Project }) {
   )
 }
 
-function PartMenu({ part, onRename, compare }: { part: Part; onRename: () => void; compare: boolean }) {
+function PartMenu({ part, onRename, compare, onEditVst, onCustomTuning }: { part: Part; onRename: () => void; compare: boolean; onEditVst: () => void; onCustomTuning: () => void }) {
   const st = useProject()
   const [sub, setSub] = useState<null | 'kind' | 'sound' | 'tuning' | 'pan'>(null)
   return (
@@ -249,6 +270,7 @@ function PartMenu({ part, onRename, compare }: { part: Part; onRename: () => voi
             {Object.entries(TUNINGS).filter(([, t]) => t.for === (INSTRUMENTS[part.kind].family === 'bass' ? 'bass' : 'guitar')).map(([k, t]) => (
               <MenuItem key={k} onClick={() => { st.edit((s) => { s.parts.find((x) => x.id === part.id)!.tuning = [...t.strings]; }); close() }} hint={t.strings.map((x) => midiName(x).replace(/\d/, '')).reverse().join('')}>{t.name}</MenuItem>
             ))}
+            <MenuItem onClick={() => { close(); onCustomTuning() }}>Custom tuning…</MenuItem>
             <div className="flex items-center gap-2 px-2.5 pt-2 pb-1">
               <span className="text-[12.5px] flex-1">Capo</span>
               <input type="number" min={0} max={12} className="field !h-7 !w-16" value={part.capo ?? 0} onChange={(e) => st.edit((s) => { s.parts.find((x) => x.id === part.id)!.capo = Math.max(0, Math.min(12, +e.target.value || 0)) })} />
@@ -263,13 +285,14 @@ function PartMenu({ part, onRename, compare }: { part: Part; onRename: () => voi
         )
         return (
           <>
+            {part.vstInstrument && <MenuItem onClick={() => { close(); onEditVst() }}>Open plug-in editor…</MenuItem>}
             <MenuItem icon={<Pencil size={14} />} onClick={() => { onRename(); close() }}>Rename</MenuItem>
             <MenuItem icon={familyIcon(part.kind, 14)} onClick={() => setSub('kind')} hint={INSTRUMENTS[part.kind].label}>Instrument type</MenuItem>
             <MenuItem icon={<SlidersHorizontal size={14} />} onClick={() => { useProject.setState({ rackPart: part.id }); close() }}>Sound & effects…</MenuItem>
             <MenuItem icon={<Music size={14} />} onClick={() => setSub('sound')}>Quick sound change</MenuItem>
             {isFretted(part.kind) && <MenuItem icon={<Guitar size={14} />} onClick={() => setSub('tuning')} hint={part.capo ? `capo ${part.capo}` : ''}>Tuning & capo</MenuItem>}
             <MenuItem icon={<Headphones size={14} />} onClick={() => setSub('pan')}>Pan</MenuItem>
-            {part.stem && <MenuItem icon={<SplitSquareHorizontal size={14} />} onClick={() => { player.setOptions({ compare: compare ? null : part.id }); close() }} hint="audio L · MIDI R">{compare ? 'Stop comparing' : 'Compare with recording'}</MenuItem>}
+            {part.stem && <MenuItem icon={<SplitSquareHorizontal size={14} />} onClick={() => { player.setOptions({ compare: compare ? null : part.id, listen: compare ? st.project?.practice.listen === 'transcription' ? 'transcription' : 'original' : 'parts' }); close() }} hint="audio L · MIDI R">{compare ? 'Stop comparing' : 'Compare with recording'}</MenuItem>}
             {part.classification && (
               <div className="px-2.5 py-1.5 text-[11.5px] text-faint leading-relaxed">
                 AI guessed <b className="text-muted">{INSTRUMENTS[part.classification.label as InstrumentKind]?.label ?? part.classification.label}</b> ({Math.round(part.classification.confidence * 100)}%)

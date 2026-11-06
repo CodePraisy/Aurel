@@ -24,7 +24,7 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
   const current = app.getVersion()
   let res: Response
   try {
-    res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': `Aurel/${current}` } })
+    res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': `Aurel/${current}` }, signal: AbortSignal.timeout(10000) })
   } catch {
     return { current, available: false, error: 'Could not reach GitHub. Check your internet connection.' }
   }

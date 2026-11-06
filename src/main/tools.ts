@@ -60,7 +60,20 @@ export function toolEnv(): NodeJS.ProcessEnv {
   return { ...process.env, PATH: `${paths.tools}${sep}${process.env.PATH ?? process.env.Path ?? ''}` }
 }
 
+let ytInstall: Promise<string> | null = null
 export async function installYtDlp(ctx: JobCtx | null, force = false): Promise<string> {
+  if (!ytInstall) {
+    // The downloader is shared by all jobs. Cancelling one import leaves setup available to the others.
+    ytInstall = installYtTools(force).finally(() => { ytInstall = null })
+  }
+  ctx?.progress('Preparing YouTube downloader', -1)
+  const file = await ytInstall
+  ctx?.check()
+  return file
+}
+
+async function installYtTools(force: boolean): Promise<string> {
+  const ctx = null
   const file = ytDlpBundled()
   await installDeno(ctx).catch(() => undefined)
   if (fs.existsSync(file) && !force) return file

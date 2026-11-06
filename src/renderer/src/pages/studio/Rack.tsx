@@ -66,6 +66,9 @@ export default function Rack() {
             setPickingInstrument(false)
           }} /></div>}
           <div className="space-y-1 max-h-[280px] overflow-auto pr-1">
+            {settings?.vstInstruments.map((preset) => <button key={preset.id} className="btn-ghost w-full !justify-start" title={preset.name} onClick={() => updatePart(part.id, { vstInstrument: preset.configuration, playback: 'midi' })}>
+              <span className="truncate flex-1 text-left">{preset.name}</span><span className="text-faint text-[11px]">VST3</span>
+            </button>)}
             {SOUNDS.filter((s) => s.id !== 'sine').map((s) => {
               const st = packStatus(s.id)
               const on = !part.vstInstrument && sound === s.id

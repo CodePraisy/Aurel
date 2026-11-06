@@ -10,6 +10,9 @@ export type InstrumentKind =
   | 'acoustic-guitar' | 'clean-guitar' | 'distorted-guitar' | 'bass'
   | 'drums' | 'vocals' | 'strings' | 'brass' | 'woodwinds' | 'other'
 
+export const TRANSCRIPTION_SOURCES = ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other'] as const
+export type TranscriptionSource = typeof TRANSCRIPTION_SOURCES[number]
+
 export type Clef = 'treble' | 'bass' | 'treble8' | 'percussion'
 export type Articulation = 'staccato' | 'accent' | 'tenuto' | 'marcato' | 'fermata'
 export type Technique = 'bend' | 'slide' | 'hammer' | 'palmMute' | 'harmonic' | 'vibrato'
@@ -89,6 +92,8 @@ export interface ProjectAudio {
   playback?: string // compressed copy used for streaming playback
   duration: number // seconds
   offset: number // seconds of audio that correspond to tick 0
+  tempoLinked?: boolean
+  referenceTempo?: number
   trimmed?: number // seconds of leading silence removed from the original file
   sourceUrl?: string
   youtube?: YouTubeMeta
@@ -185,6 +190,7 @@ export interface UpdateInfo {
 }
 
 export interface JobUpdate {
+  projectId?: string
   jobId: string
   kind: 'import' | 'youtube' | 'process' | 'install' | 'export' | 'sounds' | 'tools' | 'update'
   stage: string
@@ -195,6 +201,8 @@ export interface JobUpdate {
   error?: string
   result?: unknown
 }
+
+export interface VstInstrumentPreset { id: string; name: string; kind: InstrumentKind; configuration: VstConfiguration }
 
 export interface Settings {
   theme: 'dark' | 'light' | 'sakura'
@@ -209,6 +217,7 @@ export interface Settings {
   metronomeVolume: number
   countInBars: number
   defaultView: ViewMode
+  pianoGrandStaff: boolean
   noteInputPreview: boolean
   export: ExportAudioSettings
   soundfont: string
@@ -225,6 +234,7 @@ export interface Settings {
   countInOn: boolean
   vstDisabled: string[] // lower-cased module paths the user switched off
   customSounds: CustomSound[]
+  vstInstruments: VstInstrumentPreset[]
   soundSwaps: Record<string, string> // built-in sound id -> custom sound id used everywhere instead
   checkUpdates: boolean // look for a new version on GitHub at start-up
   skippedVersion: string // a version the user chose to skip

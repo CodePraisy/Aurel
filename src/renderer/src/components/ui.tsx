@@ -64,7 +64,7 @@ export function Artwork({ id, artwork, title, size = 44, className }: { id: stri
   )
 }
 
-export function Popover({ trigger, children, align = 'left', width = 240 }: { trigger: (open: () => void, isOpen: boolean) => ReactNode; children: (close: () => void) => ReactNode; align?: 'left' | 'right'; width?: number }) {
+export function Popover({ trigger, children, align = 'left', side = 'bottom', width = 240 }: { trigger: (open: () => void, isOpen: boolean) => ReactNode; children: (close: () => void) => ReactNode; align?: 'left' | 'right'; side?: 'top' | 'bottom'; width?: number }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -74,14 +74,16 @@ export function Popover({ trigger, children, align = 'left', width = 240 }: { tr
       const selectId = target.closest<HTMLElement>('[data-select-popup]')?.dataset.selectPopup
       if (!ref.current?.contains(target) && !(selectId && ref.current?.contains(document.getElementById(selectId)))) setOpen(false)
     }
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
     window.addEventListener('mousedown', h)
-    return () => window.removeEventListener('mousedown', h)
+    window.addEventListener('keydown', key)
+    return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', key) }
   }, [open])
   return (
     <div className="relative" ref={ref}>
       {trigger(() => setOpen((o) => !o), open)}
       {open && (
-        <div className={cx('absolute z-40 mt-1.5 card shadow-xl p-1.5 animate-fadein', align === 'right' ? 'right-0' : 'left-0')} style={{ width }}>
+        <div className={cx('absolute z-40 card shadow-xl p-1.5 animate-fadein', side === 'top' ? 'bottom-full mb-1.5 max-h-[65vh] overflow-y-auto' : 'mt-1.5', align === 'right' ? 'right-0' : 'left-0')} style={{ width }}>
           {children(() => setOpen(false))}
         </div>
       )}

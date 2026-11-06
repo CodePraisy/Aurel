@@ -70,6 +70,27 @@ function measureMinWidth(score: Score, parts: Part[], mi: number): number {
   return Math.max(70, w + 24 + (score.timeSig.num > 4 ? 8 : 0))
 }
 
+function staffOverflow(part: Part, measures: number[], key: number): { above: number; below: number } {
+  if (part.kind === 'drums') return { above: 0, below: 0 }
+  const bass = part.clef === 'bass'
+  const bottom = bass ? 2 * 7 + letterIndex('G') : 4 * 7 + letterIndex('E')
+  const top = bottom + 8
+  const shift = INSTRUMENTS[part.kind].displayShift
+  let above = 0, below = 0
+  for (const index of measures) {
+    for (const event of part.measures[index]?.events ?? []) {
+      if (event.rest) continue
+      for (const note of event.notes) {
+        const { octave, step } = spell(note.pitch + shift, key)
+        const line = octave * 7 + letterIndex(step)
+        if (line > top) above = Math.max(above, (line - top) * 5 + 12)
+        if (line < bottom) below = Math.max(below, (bottom - line) * 5 + 12)
+      }
+    }
+  }
+  return { above, below }
+}
+
 export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): ScoreLayout {
   el.innerHTML = ''
   const parts = o.parts
@@ -106,17 +127,23 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
   const systemBottom = 46
   let y = headerH
   const layoutSystems: SystemLayout[] = []
-  const sysYs: number[] = []
-  for (let s = 0; s < systemsIdx.length; s++) {
-    sysYs.push(y)
-    let h = systemTop
-    let prev: { k: 'staff' | 'tab'; p: Part } | null = null
-    for (const r of rowSpec) {
-      h += rowGap(r.k, prev?.k ?? null, prev?.p === r.p) + (r.k === 'staff' ? STAFF_H : tabH(r.p))
-      prev = r
-    }
-    y += h + systemBottom
-  }
+  const systemMetrics = systemsIdx.map((measures) => {
+    const top = y
+    let rowY = top + systemTop
+    let previous: { p: Part; k: 'staff' | 'tab'; below: number } | undefined
+    const placedRows = rowSpec.map(({ p, k }) => {
+      const { above, below } = k === 'staff' ? staffOverflow(p, measures, score.keyFifths) : { above: 0, below: 0 }
+      rowY += rowGap(k, previous?.k ?? null, previous?.p === p) + above + (previous?.below ?? 0)
+      const h = k === 'staff' ? STAFF_H : tabH(p)
+      const placed = { p, k, y: rowY, h, above, below }
+      rowY += h
+      previous = placed
+      return placed
+    })
+    const bottom = rowY + (placedRows.at(-1)?.below ?? 0)
+    y = bottom + systemBottom
+    return { top, bottom, rows: placedRows }
+  })
   const totalH = y + 10
 
   type Ctx = RenderContext & { setBackgroundFillStyle?: (s: string) => void; setViewBox?: (x: number, y: number, w: number, h: number) => void }
@@ -137,7 +164,7 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
     el.appendChild(d)
     return makeCtx(d, top, h)
   }
-  let ctx: Ctx = o.split ? chunk(0, (sysYs[1] ?? totalH) - 0) : makeCtx(el, 0, totalH)
+  let ctx: Ctx = o.split ? chunk(0, (systemMetrics[1]?.top ?? totalH) - 0) : makeCtx(el, 0, totalH)
 
   if (o.header) {
     ctx.save()
@@ -154,8 +181,8 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
   const pendingTab = new Map<string, { note: TabNote; kind: 'hammer' | 'slide'; pitch: number }>()
 
   systemsIdx.forEach((mis, si) => {
-    const sy = sysYs[si]
-    if (o.split && si > 0) ctx = chunk(sy, (sysYs[si + 1] ?? totalH) - sy)
+    const { top: sy, bottom, rows: rowYs } = systemMetrics[si]
+    if (o.split && si > 0) ctx = chunk(sy, (systemMetrics[si + 1]?.top ?? totalH) - sy)
     const firstSystem = si === 0
     // widths: stretch to fill (last system only if it's at least 60% full)
     const mins = mis.map((mi, k) => measureMinWidth(score, parts, mi) + headerW(k === 0, mi === 0))
@@ -165,20 +192,9 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
     const stretch = last && total < avail * 0.6 ? 1 : avail / total
     const widths = mins.map((w) => w * stretch)
 
-    // row y positions
-    const rowYs: { p: Part; k: 'staff' | 'tab'; y: number; h: number }[] = []
-    let ry = sy + systemTop
-    let prev: { k: 'staff' | 'tab'; p: Part } | null = null
-    for (const r of rowSpec) {
-      ry += rowGap(r.k, prev?.k ?? null, prev?.p === r.p)
-      const h = r.k === 'staff' ? STAFF_H : tabH(r.p)
-      rowYs.push({ p: r.p, k: r.k, y: ry, h })
-      ry += h
-      prev = r
-    }
     const sys: SystemLayout = {
-      top: sy, bottom: ry + 28, measures: [],
-      rows: rowYs.map((r) => ({ partId: r.p.id, kind: r.k, y: r.y, h: r.h, top: r.y - 26, bottom: r.y + r.h + 26, events: [] }))
+      top: sy, bottom: bottom + 28, measures: [],
+      rows: rowYs.map((r) => ({ partId: r.p.id, kind: r.k, y: r.y, h: r.h, top: r.y - r.above - 26, bottom: r.y + r.h + r.below + 26, events: [] }))
     }
 
     // part labels

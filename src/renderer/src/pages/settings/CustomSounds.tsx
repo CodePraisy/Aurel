@@ -5,8 +5,14 @@ import { api } from '@/lib/api'
 import { useApp } from '@/store/app'
 import { player } from '@/audio/player'
 import { SOUNDS, type SoundId } from '@/audio/synth'
-import { Select } from '@/components/menu'
-import { midiName } from '@/music/theory'
+import { openContextMenu, Select } from '@/components/menu'
+import { INSTRUMENTS, midiName } from '@/music/theory'
+import type { InstrumentKind, VstInstrumentPreset } from '@shared/types'
+import { Modal } from '@/components/ui'
+import { uid } from '@/music/score'
+import { ADDABLE } from '../Dialogs'
+import VstPicker from '../studio/VstPicker'
+import { PluginControls } from '../studio/FxChainEditor'
 
 const plain = (e: Error) => e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
@@ -75,7 +81,9 @@ function Instrument({ sound }: { sound: CustomSound }) {
 
 /** Settings → Instrument sounds: instruments made from your own recordings. */
 export default function CustomSounds() {
-  const { settings, toast } = useApp()
+  const { settings, toast, updateSettings } = useApp()
+  const [addingVst, setAddingVst] = useState(false)
+  const [editingVst, setEditingVst] = useState<VstInstrumentPreset | null>(null)
   const [busy, setBusy] = useState(false)
   const add = async () => {
     const files = await api.sounds.pickSamples()
@@ -89,6 +97,18 @@ export default function CustomSounds() {
     finally { setBusy(false) }
   }
   const list = settings?.customSounds ?? []
+  const vst = settings?.vstInstruments ?? []
+  const storeVst = (preset: VstInstrumentPreset) => {
+    const all = useApp.getState().settings?.vstInstruments ?? []
+    return updateSettings({ vstInstruments: [...all.filter((item) => item.id !== preset.id), preset] })
+  }
+  const editNative = async (preset: VstInstrumentPreset) => {
+    try {
+      const configuration = await api.vst.edit(null, 'instrument', preset.configuration, preset.configuration.plugin.name)
+      const current = useApp.getState().settings?.vstInstruments.find((item) => item.id === preset.id)
+      if (current) await storeVst({ ...current, configuration })
+    } catch (error) { toast(plain(error as Error), 'error') }
+  }
   return (
     <section className="mt-5">
       <div className="flex items-end justify-between gap-4 mb-2">
@@ -96,12 +116,44 @@ export default function CustomSounds() {
           <h3 className="font-display text-[19px]">Your instruments</h3>
           <p className="text-muted text-[12.5px] mt-1 leading-relaxed max-w-[520px]">Make an instrument from your own recordings. One sample is enough, and more samples across the range sound more natural. Name files by their note (for example <span className="kbd">Piano C4.wav</span>) and Aurel sets the root notes for you. Use it in any part, or swap it in for a built-in sound everywhere.</p>
         </div>
-        <button className="btn-primary shrink-0" disabled={busy} onClick={() => void add()}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add instrument…</button>
+        <button className="btn-primary shrink-0" disabled={busy} onClick={() => void add()}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add samples…</button>
       </div>
       <div className="space-y-3 mt-4">
         {list.map((s) => <Instrument key={s.id} sound={s} />)}
-        {!list.length && <p className="text-faint text-[12.5px] text-center border border-dashed border-line rounded-xl p-5">No instruments of your own yet.</p>}
+        {vst.map((preset) => <div key={preset.id} className="card p-3 flex items-center gap-3" onContextMenu={(event) => openContextMenu(event, [
+          { label: 'Open plug-in editor…', onClick: () => void editNative(preset) },
+          { label: 'Edit name and type…', onClick: () => setEditingVst(preset) }
+        ])}>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium truncate" title="Double-click to open plug-in editor" onDoubleClick={() => void editNative(preset)}>{preset.name}</div>
+            <div className="text-[12px] text-muted">{INSTRUMENTS[preset.kind].label} · {preset.configuration.plugin.name}</div>
+          </div>
+          <button className="btn-soft" onClick={() => setEditingVst(preset)}>Edit</button>
+          <button className="icon-btn" aria-label={`Remove ${preset.name}`} onClick={() => void updateSettings({ vstInstruments: vst.filter((item) => item.id !== preset.id) })}><Trash2 size={14} /></button>
+        </div>)}
+        {!list.length && !vst.length && <p className="text-faint text-[12.5px] text-center border border-dashed border-line rounded-xl p-5">No instruments of your own yet.</p>}
       </div>
+      <button className="btn-soft mt-3" onClick={() => setAddingVst(true)}><Plus size={14} /> Import installed VST3 instrument…</button>
+      {addingVst && <Modal open title="Import VST3 instrument" onClose={() => setAddingVst(false)} width={430}>
+        <VstPicker kind="instrument" onPick={(configuration) => {
+          setEditingVst({ id: uid('vi'), name: configuration.plugin.name, kind: 'synth', configuration })
+          setAddingVst(false)
+        }} />
+      </Modal>}
+      {editingVst && <Modal open title="VST3 instrument preset" onClose={() => setEditingVst(null)} width={440}>
+        <div className="space-y-3">
+          <label className="block"><span className="label mb-1 block">Display name</span><input className="field" value={editingVst.name} onChange={(event) => setEditingVst({ ...editingVst, name: event.target.value })} /></label>
+          <div><span className="label mb-1 block">Instrument type</span>
+            <Select value={editingVst.kind} onChange={(kind: InstrumentKind) => setEditingVst({ ...editingVst, kind })} options={ADDABLE.map((kind) => ({ value: kind, label: INSTRUMENTS[kind].label }))} />
+          </div>
+          <PluginControls configuration={editingVst.configuration} home={{ track: null, slotId: 'instrument' }}
+            onChange={(configuration) => setEditingVst((current) => current?.id === editingVst.id ? { ...current, configuration } : current)} />
+          <div className="flex justify-end"><button className="btn-primary" disabled={!editingVst.name.trim()} onClick={() => {
+            void storeVst({ ...editingVst, name: editingVst.name.trim() })
+              .then(() => { setEditingVst(null); toast('Instrument available in Studio.', 'ok') }, (error: Error) => toast(error.message, 'error'))
+          }}>Save instrument</button></div>
+        </div>
+      </Modal>}
     </section>
   )
 }

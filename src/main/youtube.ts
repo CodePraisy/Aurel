@@ -124,6 +124,11 @@ export async function acquireYouTubeJob(ctx: JobCtx, url: string): Promise<{ pro
     p.audio!.youtube = meta
     ctx.progress('Detecting tempo & time signature', -1)
     applyTempoGuess(p, join(dir, 'audio', 'original.wav'))
+    const existing = findDuplicate('youtube_id', meta.id)
+    if (existing) {
+      fs.rmSync(dir, { recursive: true, force: true })
+      return { projectId: existing, duplicate: true }
+    }
     saveProjectFile(p)
     indexProject(p, { youtubeId: meta.id, source: meta.url, artwork: fs.existsSync(join(dir, 'artwork.jpg')) ? 'artwork.jpg' : undefined })
     return { projectId: id }

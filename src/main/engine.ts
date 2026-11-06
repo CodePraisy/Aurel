@@ -1,3 +1,4 @@
+import type { TranscriptionSource } from '@shared/types'
 import fs from 'fs'
 import { join } from 'path'
 import { spawn } from 'child_process'
@@ -108,13 +109,16 @@ export async function installEngineJob(ctx: JobCtx): Promise<EngineStatus> {
   return status
 }
 
-export async function processJob(ctx: JobCtx, projectId: string): Promise<{ analysis: string }> {
+let gpuInUse = false
+
+export async function processJob(ctx: JobCtx, projectId: string, sources?: TranscriptionSource[]): Promise<{ analysis: string }> {
   const st = await engineStatus()
   if (!st.ready) throw new Error(st.message ?? 'AI engine is not ready.')
   const py = enginePython()!
   const project = loadProjectFile(projectId)
   if (!project?.audio) throw new Error('This project has no audio to process.')
   const s = getSettings()
+  const model = sources?.some((source) => source === 'guitar' || source === 'piano') ? DEFAULT_SETTINGS.separationModel : s.separationModel
   const dir = paths.project(projectId)
   const setStatus = (status: NonNullable<typeof project.analysis>['status'], error?: string) => {
     const p = loadProjectFile(projectId)
@@ -140,16 +144,21 @@ export async function processJob(ctx: JobCtx, projectId: string): Promise<{ anal
   setStatus('running')
   let result: string | null = null
   let lastErr = ''
+  const useGpu = s.device !== 'cpu' && st.cuda && !gpuInUse
+  const device = s.device !== 'cpu' && st.cuda && gpuInUse ? 'cpu' : s.device
+  if (useGpu) gpuInUse = true
   try {
+    if (device === 'cpu' && s.device !== 'cpu') ctx.progress('Starting a parallel transcription on the CPU', -1)
     const r = await ctx.run(py.cmd, [
       ...py.pre, '-u', paths.engineScript, 'process',
       '--input', join(dir, project.audio.original),
       '--out', dir,
-      '--model', s.separationModel,
-      '--device', s.device,
+      '--model', model,
+      ...(sources?.length ? ['--sources', ...sources] : []),
+      '--device', device,
       ...(s.drumSplit ? ['--drums'] : [])
     ], {
-      env: { ...process.env, PYTHONIOENCODING: 'utf-8', TORCH_HOME: join(s.separationModel === DEFAULT_SETTINGS.separationModel ? paths.engineRoot : paths.data, 'models') },
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', TORCH_HOME: join(model === DEFAULT_SETTINGS.separationModel ? paths.engineRoot : paths.data, 'models') },
       onLine: (l, stream) => {
         if (stream === 'err') { ctx.log(l); lastErr = l; return }
         try {
@@ -165,5 +174,7 @@ export async function processJob(ctx: JobCtx, projectId: string): Promise<{ anal
   } catch (e) {
     setStatus((e as Error).message === 'Cancelled' ? 'cancelled' : 'failed', (e as Error).message)
     throw e
+  } finally {
+    if (useGpu) gpuInUse = false
   }
 }

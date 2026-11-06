@@ -1,10 +1,11 @@
+import { detectedBpm, recordingRate } from '../src/shared/rhythm'
 import { newer } from '../src/shared/version'
 import { noteFromName } from '../src/shared/sounds'
 import { describe, it, expect } from 'vitest'
 import { Midi } from '@tonejs/midi'
 import { decompose, spell, measureTicks, pitchFromLetter, WHOLE } from '@/music/theory'
-import { emptyMeasure, overwrite, newScore, flattenPart, tempoMap, normalizeMeasure } from '@/music/score'
-import { assignTab, positionsFor } from '@/music/tab'
+import { emptyMeasure, overwrite, newScore, newProject, flattenPart, tempoMap, normalizeMeasure } from '@/music/score'
+import { assignTab, positionsFor, suggestTuning } from '@/music/tab'
 import { quantizeNotes, onsetsToMeasures, detectKey, analysisToScore } from '@/music/quantize'
 import { scoreToMidi, midiToScore } from '@/music/midi'
 import { scoreToMusicXml } from '@/music/musicxml'
@@ -235,5 +236,35 @@ describe('releases and samples', () => {
     expect(noteFromName('Cello-Db3.aif')).toBe(49)
     expect(noteFromName('69.wav')).toBe(69)
     expect(noteFromName('kick.wav')).toBeNull()
+  })
+})
+
+describe('recording tempo controls', () => {
+  it('uses the recording reference BPM only when linking is enabled', () => {
+    const project = newProject(newScore({ title: '', composer: '', tempo: 150, num: 4, den: 4, keyFifths: 0, instruments: [] }), 'transcription')
+    project.audio = { original: 'audio/original.wav', duration: 30, offset: 0 }
+    project.analysis = { status: 'done', detectedTempo: 119.8 }
+    expect(detectedBpm(project)).toBe(120)
+    expect(recordingRate(project, 0.8)).toBe(0.8)
+    project.audio.tempoLinked = true
+    expect(recordingRate(project, 0.8)).toBe(1)
+    project.audio.referenceTempo = 100
+    expect(recordingRate(project, 0.8)).toBeCloseTo(1.2)
+  })
+})
+
+describe('instrument defaults', () => {
+  it('can create keyboard instruments with one staff', () => {
+    const options = { title: '', composer: '', tempo: 120, num: 4, den: 4, keyFifths: 0, instruments: ['piano' as const] }
+    expect(newScore(options).parts).toHaveLength(2)
+    expect(newScore({ ...options, pianoGrandStaff: false }).parts).toHaveLength(1)
+  })
+
+  it('suggests a preset that can play a note below standard guitar range', () => {
+    const score = newScore({ title: '', composer: '', tempo: 120, num: 4, den: 4, keyFifths: 0, instruments: ['clean-guitar'], measures: 1 })
+    const [part] = score.parts
+    expect(suggestTuning(part)).toBeNull()
+    part.measures[0].events = [{ id: 'low-d', start: 0, dur: PPQ, velocity: 80, notes: [{ pitch: 38 }] }]
+    expect(suggestTuning(part)?.name).toBe('Drop D')
   })
 })

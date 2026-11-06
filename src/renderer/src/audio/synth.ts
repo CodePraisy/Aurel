@@ -481,7 +481,7 @@ export function playNote(ctx: BaseAudioContext, dest: AudioNode, sound: SoundId,
 }
 
 /** Metronome click. */
-export function click(ctx: BaseAudioContext, dest: AudioNode, when: number, accent: boolean, volume: number): void {
+export function click(ctx: BaseAudioContext, dest: AudioNode, when: number, accent: boolean, volume: number): OscillatorNode {
   const o = ctx.createOscillator()
   const g = ctx.createGain()
   o.type = 'sine'
@@ -492,6 +492,7 @@ export function click(ctx: BaseAudioContext, dest: AudioNode, when: number, acce
   o.connect(g).connect(dest)
   o.start(when)
   o.stop(when + 0.08)
+  return o
 }
 
 /** Pre-generate sample buffers so the first playback doesn't stutter. */

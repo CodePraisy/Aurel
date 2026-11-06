@@ -1,3 +1,4 @@
+import type { TranscriptionSource } from './types'
 import type { PackStatus, StemStream, VstChainResult, VstComponent, VstConfiguration, VstEvent, VstFailure, VstModule, VstParameter, VstRenderSpec, VstSlotSpec } from './sounds'
 import type { Collection, EngineStatus, JobUpdate, LibraryEntry, Project, RhythmEstimate, Settings, UpdateInfo, YouTubeCheck } from './types'
 
@@ -22,7 +23,8 @@ export interface AurelApi {
   project: {
     create(project: Project): Promise<void>
     load(id: string): Promise<Project>
-    save(project: Project): Promise<void>
+    save(project: Project, analysisComplete?: boolean): Promise<void>
+    changeCover(projectId: string): Promise<boolean>
     readText(id: string, rel: string): Promise<string>
     url(id: string, rel: string): string
   }
@@ -44,7 +46,7 @@ export interface AurelApi {
   engine: {
     status(force?: boolean): Promise<EngineStatus>
     install(): Promise<{ jobId: string }>
-    process(projectId: string): Promise<{ jobId: string }>
+    process(projectId: string, sources?: TranscriptionSource[]): Promise<{ jobId: string }>
   }
   jobs: {
     cancel(jobId: string): Promise<void>

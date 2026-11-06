@@ -9,6 +9,7 @@ import {
 } from '@/music/score'
 import { pitchAt } from '@/music/tab'
 import { player } from '@/audio/player'
+import { useApp } from './app'
 
 export interface Cursor { partId: string; measure: number; tick: number }
 interface NoteSelection { partId: string; anchor: string; ids: string[] }
@@ -36,9 +37,11 @@ interface EditorState {
   inputNote(pitch: number, opts?: { chord?: boolean; pos?: { string: number; fret: number }; velocity?: number; silent?: boolean }): void
   load(id: string): Promise<void>
   close(): void
+  save(): Promise<void>
+  setMetadata(patch: Partial<Pick<Score, 'title' | 'composer'>>): void
   replace(p: Project): void
   edit(fn: (s: Score) => void): void
-  patchProject(fn: (p: Project) => void): void
+  patchProject(fn: (p: Project) => void, history?: boolean): void
   updatePart(id: string, patch: Partial<Part>): void
   undo(): void
   redo(): void
@@ -94,15 +97,30 @@ function findSel(s: EditorState): { part: Part; mi: number; ei: number; e: NoteE
 }
 
 export const useProject = create<EditorState>((set, get) => {
+  let loadRequest = 0
+  let editRevision = 0
+  let saves = Promise.resolve()
+  const save = () => {
+    if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null }
+    const project = get().project
+    if (!project) return Promise.resolve()
+    const revision = editRevision
+    set({ saving: true })
+    const task = saves.then(() => api.project.save({ ...project, score: { ...project.score, title: project.score.title.trim() || 'Untitled' }, updated: Date.now() }))
+    saves = task.catch(() => undefined)
+    return task.then(() => {
+      if (get().project?.id === project.id && editRevision === revision) set({ saving: false, savedAt: Date.now() })
+    })
+  }
+  const autoSave = () => void save().catch((error: Error) => {
+    set({ saving: false })
+    console.error('Aurel could not save the project', error)
+  })
   const scheduleSave = () => {
+    editRevision++
     set({ saving: true })
     if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = window.setTimeout(async () => {
-      const p = get().project
-      if (!p) return
-      await api.project.save({ ...p, updated: Date.now() })
-      set({ saving: false, savedAt: Date.now() })
-    }, 600)
+    saveTimer = window.setTimeout(autoSave, 600)
   }
   const commit = (project: Project, history = true) => {
     const prev = get().project
@@ -169,7 +187,10 @@ export const useProject = create<EditorState>((set, get) => {
     },
 
     load: async (id) => {
+      const request = ++loadRequest
+      await saves
       const p = await api.project.load(id)
+      if (request !== loadRequest) return
       set({ project: p, past: [], future: [], cursor: null, sel: null, noteSelection: null, range: null, saving: false })
       player.setProject(p)
       const first = p.score.parts.find((x) => x.id === p.view?.part) ?? p.score.parts[0]
@@ -179,18 +200,26 @@ export const useProject = create<EditorState>((set, get) => {
       }
     },
     close: () => {
-      if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; const p = get().project; if (p) void api.project.save({ ...p, updated: Date.now() }) }
+      loadRequest++
+      if (saveTimer !== null) autoSave()
       player.release()
       set({ project: null, past: [], future: [], cursor: null, sel: null, noteSelection: null, range: null, saving: false })
     },
     replace: (p) => { set({ project: p, past: [], future: [], noteSelection: null }); player.setProject(p) },
+    save,
+    setMetadata: (patch) => {
+      const project = get().project
+      if (!project) return
+      set({ project: { ...project, score: { ...project.score, ...patch } } })
+      scheduleSave()
+    },
     edit: editScore,
-    patchProject: (fn) => {
+    patchProject: (fn, history = false) => {
       const p = get().project
       if (!p) return
       const n = structuredClone(p)
       fn(n)
-      commit(n, false)
+      commit(n, history)
     },
     updatePart: (id, patch) => {
       const p = get().project
@@ -552,7 +581,7 @@ export const useProject = create<EditorState>((set, get) => {
       let count = measureCount(p.score)
       if (!count) count = p.audio ? Math.max(1, Math.ceil((((p.audio.duration - p.audio.offset) * p.score.tempo) / 60) * PPQ / MT)) : 16
       const parts = source ? [{ ...defaultPart(kind, count, MT, source.name), vstInstrument: source.vstInstrument }]
-        : kind === 'piano' || kind === 'epiano' || kind === 'organ' ? pianoParts(count, MT, kind) : [defaultPart(kind, count, MT)]
+        : useApp.getState().settings?.pianoGrandStaff !== false && (kind === 'piano' || kind === 'epiano' || kind === 'organ') ? pianoParts(count, MT, kind) : [defaultPart(kind, count, MT)]
       editScore((sc) => { sc.parts.push(...parts) })
       set({ cursor: { partId: parts[0].id, measure: 0, tick: 0 }, sel: parts[0].measures[0].events[0].id, noteSelection: null })
       get().setView({ part: parts[0].id })

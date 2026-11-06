@@ -13,6 +13,7 @@ export function itemMenu(e: LibraryEntry, a: LibraryActions): MenuEntry[] {
   const refresh = () => void st.refreshLibrary()
   return [
     { label: 'Open', icon: <Play size={14} />, onClick: () => st.go({ name: 'studio', projectId: e.id }) },
+    { label: 'Change cover photo…', onClick: () => void st.changeCover(e.id) },
     { label: 'Rename…', icon: <Pencil size={14} />, onClick: () => a.rename(e) },
     { label: e.favorite ? 'Remove from favorites' : 'Add to favorites', icon: <Star size={14} />, onClick: async () => { await api.library.setFavorite(e.id, !e.favorite); refresh() } },
     {

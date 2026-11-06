@@ -640,7 +640,7 @@ function trackSendTo(session: HostSession, lines: string[]): void {
 
 /** Raw float audio of a stem at the playback speed and transposition, for plug-ins to process. */
 export async function prepareStemStream(projectId: string, rel: string, semis: number, speed: number, sampleRate: number): Promise<StemStream> {
-  if (!Number.isInteger(semis) || Math.abs(semis) > 24 || !(speed >= 0.25 && speed <= 2) || ![44100, 48000, 88200, 96000, 192000].includes(sampleRate)) {
+  if (!Number.isInteger(semis) || Math.abs(semis) > 24 || !(speed >= 0.0625 && speed <= 16) || ![44100, 48000, 88200, 96000, 192000].includes(sampleRate)) {
     throw new Error('Unsupported playback settings.')
   }
   const source = paths.inProject(projectId, rel)
@@ -656,13 +656,14 @@ export async function prepareStemStream(projectId: string, rel: string, semis: n
     while (tempo < 0.5) { filters.push('atempo=0.5'); tempo /= 0.5 }
     while (tempo > 2) { filters.push('atempo=2'); tempo /= 2 }
     if (Math.abs(tempo - 1) > 1e-6) filters.push(`atempo=${tempo.toFixed(6)}`)
-    const tmp = `${file}.tmp`
+    const tmp = `${file}.${process.hrtime.bigint()}.tmp`
     await new Promise<void>((resolve, reject) => {
       const p = spawn(paths.ffmpeg, ['-hide_banner', '-y', '-i', source, ...(filters.length ? ['-af', filters.join(',')] : []), '-ac', '2', '-ar', String(sampleRate), '-f', 'f32le', tmp], { windowsHide: true })
       p.on('error', reject)
       p.on('close', (c) => (c === 0 ? resolve() : reject(new Error('Could not prepare the recording for plug-in playback.'))))
     })
-    fs.renameSync(tmp, file)
+    if (fs.existsSync(file)) fs.rmSync(tmp, { force: true })
+    else fs.renameSync(tmp, file)
   }
   const ref = hash(file).slice(0, 20)
   streams.set(ref, file)

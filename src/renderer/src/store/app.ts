@@ -1,5 +1,6 @@
+import { detectedBpm } from '@shared/rhythm'
 import { create } from 'zustand'
-import type { Collection, EngineAnalysis, EngineStatus, JobUpdate, LibraryEntry, Project, Settings, UpdateInfo } from '@shared/types'
+import type { Collection, EngineAnalysis, EngineStatus, JobUpdate, LibraryEntry, Project, Settings, TranscriptionSource, UpdateInfo } from '@shared/types'
 import { api } from '@/lib/api'
 import { analysisToScore } from '@/music/quantize'
 import { player } from '@/audio/player'
@@ -12,6 +13,7 @@ export interface JobInfo extends JobUpdate { label: string; projectId?: string; 
 
 interface AppState {
   route: Route
+  history: Route[]
   settings: Settings | null
   library: LibraryEntry[]
   collections: Collection[]
@@ -22,6 +24,7 @@ interface AppState {
   projectRevision: Record<string, number> // bumps when a project changes outside the editor
   update: UpdateInfo | null // a newer release to offer
   go(r: Route): void
+  back(fallback?: Route): void
   setDialog(d: AppState['dialog']): void
   loadSettings(): Promise<void>
   updateSettings(p: Partial<Settings>): Promise<void>
@@ -30,14 +33,18 @@ interface AppState {
   toast(text: string, kind?: Toast['kind'], action?: Toast['action']): void
   track(jobId: string, label: string, projectId?: string): void
   importFile(path: string): Promise<void>
-  processProject(projectId: string): Promise<void>
+  changeCover(projectId: string): Promise<void>
+  processProject(projectId: string, sources?: TranscriptionSource[]): Promise<void>
 }
 
 let toastId = 0
-export const pendingProcess = new Set<string>()
+const requestingProcess = new Set<string>()
+const applyingProcess = new Set<string>()
+export const pendingProcess = new Map<string, TranscriptionSource[] | undefined>()
 
 export const useApp = create<AppState>((set, get) => ({
   route: { name: 'home' },
+  history: [],
   settings: null,
   library: [],
   collections: [],
@@ -47,7 +54,12 @@ export const useApp = create<AppState>((set, get) => ({
   dialog: null,
   projectRevision: {},
   update: null,
-  go: (route) => set({ route }),
+  go: (route) => set((s) => JSON.stringify(s.route) === JSON.stringify(route) ? s :
+    { route, history: [...s.history.slice(-39), s.route] }),
+  back: (fallback = { name: 'home' }) => set((s) => ({
+    route: s.history.at(-1) ?? fallback,
+    history: s.history.slice(0, -1)
+  })),
   setDialog: (dialog) => set({ dialog }),
   loadSettings: async () => set({ settings: await api.settings.get() }),
   updateSettings: async (p) => set({ settings: await api.settings.set(p) }),
@@ -65,68 +77,97 @@ export const useApp = create<AppState>((set, get) => ({
     set((s) => ({ toasts: [...s.toasts, { id, text, kind, action }] }))
     setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'error' ? 9000 : 5000)
   },
-  track: (jobId, label, projectId) => set((s) => ({ jobs: { ...s.jobs, [jobId]: { jobId, kind: 'import', stage: 'Starting', pct: -1, label, projectId, logs: [] } } })),
+  track: (jobId, label, projectId) => set((s) => ({ jobs: { ...s.jobs, [jobId]: { ...(s.jobs[jobId] ?? { jobId, kind: 'import', stage: 'Starting', pct: -1, logs: [] }), label, projectId: projectId ?? s.jobs[jobId]?.projectId } } })),
+  changeCover: async (projectId) => {
+    try {
+      if (await api.project.changeCover(projectId)) await get().refreshLibrary()
+    } catch (error) {
+      get().toast((error as Error).message, 'error')
+    }
+  },
   importFile: async (path) => {
     const { jobId } = await api.media.importAudio(path)
     get().track(jobId, path.split(/[\\/]/).pop() ?? 'Audio')
   },
-  processProject: async (projectId) => {
-    const eng = await get().refreshEngine()
-    if (!eng.ready) {
-      // install the engine automatically, then come back to this song
-      pendingProcess.add(projectId)
-      if (!Object.values(get().jobs).some((j) => j.kind === 'install' && !j.done)) {
+  processProject: async (projectId, sources) => {
+    if (pendingProcess.has(projectId) || requestingProcess.has(projectId) || applyingProcess.has(projectId) ||
+      Object.values(get().jobs).some((j) => j.kind === 'process' && j.projectId === projectId && !j.done)) return
+    requestingProcess.add(projectId)
+    try {
+      const eng = await get().refreshEngine()
+      if (!eng.ready) {
+        pendingProcess.set(projectId, sources)
         const { jobId } = await api.engine.install()
         get().track(jobId, 'Installing the AI engine (one time, ~3–5 GB)')
-        get().toast('Installing the AI engine first. Transcription starts automatically when it’s done.', 'info')
+        return
       }
-      set((s) => ({ projectRevision: { ...s.projectRevision, [projectId]: (s.projectRevision[projectId] ?? 0) + 1 } }))
-      return
+      const editor = useProject.getState()
+      if (editor.project?.id === projectId) await editor.save()
+      const { jobId } = await api.engine.process(projectId, sources)
+      const title = get().library.find((l) => l.id === projectId)?.title ?? 'Song'
+      get().track(jobId, `Transcribing “${title}”`, projectId)
+    } catch (e) {
+      pendingProcess.delete(projectId)
+      get().toast((e as Error).message, 'error')
+    } finally {
+      requestingProcess.delete(projectId)
     }
-    const { jobId } = await api.engine.process(projectId)
-    const title = get().library.find((l) => l.id === projectId)?.title ?? 'Song'
-    get().track(jobId, `Transcribing “${title}”`, projectId)
-    set((s) => ({ projectRevision: { ...s.projectRevision, [projectId]: (s.projectRevision[projectId] ?? 0) + 1 } }))
   }
 }))
 
 /** Turn the engine's analysis into an editable score and save it. */
-async function syncAudio(projectId: string): Promise<void> {
+async function syncAudio(projectId: string, jobId: string): Promise<void> {
   const open = useProject.getState().project
   if (open?.id !== projectId) return
   const disk = await api.project.load(projectId)
-  if (!disk.audio || useProject.getState().project?.id !== projectId) return
-  useProject.getState().patchProject((p) => { p.audio = disk.audio })
+  if (!disk.audio || useProject.getState().project?.id !== projectId || useApp.getState().jobs[jobId]?.done) return
+  useProject.getState().patchProject((p) => {
+    if (p.audio && disk.audio && p.audio.trimmed === undefined && disk.audio.trimmed !== undefined) {
+      p.audio = { ...p.audio, duration: disk.audio.duration, trimmed: disk.audio.trimmed, offset: Math.max(0, p.audio.offset - disk.audio.trimmed) }
+    }
+    p.analysis = { ...p.analysis, status: 'running' }
+  })
 }
 
 export async function applyAnalysis(projectId: string): Promise<void> {
+  const editor = useProject.getState()
+  if (editor.project?.id === projectId) await editor.save()
   const project: Project = await api.project.load(projectId)
   const a = JSON.parse(await api.project.readText(projectId, 'analysis.json')) as EngineAnalysis
   const rhythm = project.analysis?.rhythm
-  const grid = rhythm !== undefined && project.audio ? { tempo: project.score.tempo, offset: project.audio.offset } : undefined
+  const editedTempo = project.audio?.referenceTempo !== undefined
+  const grid = (rhythm || editedTempo) && project.audio ? {
+    tempo: project.audio.tempoLinked ? project.audio.referenceTempo ?? detectedBpm(project) ?? project.score.tempo : project.score.tempo,
+    offset: project.audio.offset
+  } : undefined
+  a.tempo = Math.round(a.tempo)
   const timeSig = grid ? project.score.timeSig : a.timeSig ?? project.score.timeSig
-  const { score, offset, key } = analysisToScore(a, project.score.title, project.score.composer, timeSig, grid)
+  const { score, offset, key } = analysisToScore(a, project.score.title, project.score.composer, timeSig, grid, useApp.getState().settings?.pianoGrandStaff)
+  if (editedTempo) score.tempo = project.score.tempo
   project.score = score
   project.audio = { ...project.audio!, offset }
-  project.analysis = { status: 'done', device: a.device, rhythm, detectedTempo: grid ? rhythm?.bpm : a.tempo, detectedKey: key, finishedAt: Date.now() }
+  project.analysis = { status: 'done', device: a.device, rhythm, detectedTempo: rhythm ? Math.round(rhythm.bpm) : a.tempo, detectedKey: key, finishedAt: Date.now() }
   project.view = { mode: useApp.getState().settings?.defaultView ?? 'both', zoom: 1, part: score.parts.find((p) => p.kind.includes('guitar'))?.id ?? score.parts[0]?.id ?? 'all' }
   project.updated = Date.now()
-  await api.project.save(project)
+  await api.project.save(project, true)
 }
 
 // Global job listener: progress, completion handling, and chaining import -> AI processing.
 api.jobs.onUpdate(async (u) => {
   const st = useApp.getState()
   const prev = st.jobs[u.jobId]
+  const result = u.result as { projectId?: string; duplicate?: boolean } | undefined
   const info: JobInfo = { ...(prev ?? { label: u.kind, logs: [] }), ...u, logs: u.log ? [...(prev?.logs ?? []), u.log].slice(-300) : prev?.logs ?? [] }
+  info.projectId ??= result?.projectId
+  if (u.done && u.kind === 'process' && info.projectId && !u.error) applyingProcess.add(info.projectId)
   // The engine may have trimmed leading silence before starting: give an open piece the new timing.
-  if (u.kind === 'process' && !info.audioSynced && info.projectId && u.pct >= 0) {
+  if (!u.done && u.kind === 'process' && !info.audioSynced && info.projectId && u.pct >= 0) {
     info.audioSynced = true
-    void syncAudio(info.projectId)
+    void syncAudio(info.projectId, u.jobId).catch(() => undefined)
   }
   useApp.setState((s) => ({ jobs: { ...s.jobs, [u.jobId]: info } }))
   if (!u.done) return
-  setTimeout(() => useApp.setState((s) => { const j = { ...s.jobs }; delete j[u.jobId]; return { jobs: j } }), u.error ? 15000 : 2500)
+  setTimeout(() => useApp.setState((s) => { const j = { ...s.jobs }; delete j[u.jobId]; return { jobs: j } }), 30000)
   if (u.kind === 'sounds' || u.kind === 'tools') player.refreshSounds()
   if (u.error) {
     if (u.kind === 'install') pendingProcess.clear()
@@ -137,32 +178,30 @@ api.jobs.onUpdate(async (u) => {
     void st.refreshLibrary()
     return
   }
-  const result = u.result as { projectId?: string; duplicate?: boolean; analysis?: string } | undefined
   if ((u.kind === 'import' || u.kind === 'youtube') && result?.projectId) {
     await st.refreshLibrary()
-    if (result.duplicate) {
-      st.toast('That song is already in your library — opened the existing copy.', 'info')
-      st.go({ name: 'studio', projectId: result.projectId })
-      return
-    }
-    st.go({ name: 'studio', projectId: result.projectId })
-    const eng = await st.refreshEngine()
-    if (st.settings?.autoProcess && eng.ready) void useApp.getState().processProject(result.projectId)
+    st.toast(result.duplicate ? 'This song is already in your library.' : 'Recording ready.', 'ok', {
+      label: 'Open recording', run: () => st.go({ name: 'studio', projectId: result.projectId! })
+    })
+    if (result.duplicate) return
+    if (useApp.getState().settings?.autoProcess) void st.processProject(result.projectId)
   }
   if (u.kind === 'process' && info.projectId) {
     try {
       await applyAnalysis(info.projectId)
-      st.toast('Transcription ready. Notation is fully editable.', 'ok')
+      st.toast('Transcription ready.', 'ok', {
+        label: 'Open score', run: () => st.go({ name: 'studio', projectId: info.projectId! })
+      })
     } catch (e) {
       st.toast(`Could not build the score: ${(e as Error).message}`, 'error')
-    }
+    } finally { applyingProcess.delete(info.projectId) }
     useApp.setState((s) => ({ projectRevision: { ...s.projectRevision, [info.projectId!]: (s.projectRevision[info.projectId!] ?? 0) + 1 } }))
     void st.refreshLibrary()
   }
   if (u.kind === 'install') {
     await st.refreshEngine(true)
     st.toast('AI engine installed.', 'ok')
-    for (const id of [...pendingProcess]) { pendingProcess.delete(id); void useApp.getState().processProject(id) }
+    for (const [id, sources] of [...pendingProcess]) { pendingProcess.delete(id); void useApp.getState().processProject(id, sources) }
   }
   if (u.kind === 'tools' && useApp.getState().settings && !useApp.getState().settings!.setupDone) {
     void useApp.getState().updateSettings({ setupDone: true })

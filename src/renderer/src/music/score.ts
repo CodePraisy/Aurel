@@ -99,13 +99,13 @@ export function pianoParts(mCount: number, mt: number, kind: InstrumentKind = 'p
   return [rh, lh]
 }
 
-export function newScore(opts: { title: string; composer: string; tempo: number; num: number; den: number; keyFifths: number; instruments: InstrumentKind[]; measures?: number }): Score {
+export function newScore(opts: { title: string; composer: string; tempo: number; num: number; den: number; keyFifths: number; instruments: InstrumentKind[]; measures?: number; pianoGrandStaff?: boolean }): Score {
   const ts = { num: opts.num, den: opts.den }
   const mt = measureTicks(ts)
   const count = opts.measures ?? 16
   const parts: Part[] = []
   for (const k of opts.instruments) {
-    if (k === 'piano' || k === 'epiano' || k === 'organ') parts.push(...pianoParts(count, mt, k))
+    if (opts.pianoGrandStaff !== false && (k === 'piano' || k === 'epiano' || k === 'organ')) parts.push(...pianoParts(count, mt, k))
     else parts.push(defaultPart(k, count, mt))
   }
   return { title: opts.title, composer: opts.composer, tempo: opts.tempo, timeSig: ts, keyFifths: opts.keyFifths, parts }
