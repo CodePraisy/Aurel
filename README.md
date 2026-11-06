@@ -57,3 +57,5 @@ See `docs/ARCHITECTURE.md` for the MVP scope, design decisions and what is not b
 ## Platform builds
 
 Run npm ci, then npm run dist on Windows or npm run dist:mac on macOS. GitHub Actions builds unsigned Apple silicon and Intel ZIP packages. The native VST3 host and AI installer hook are Windows features.
+
+Download the Windows installer, Windows portable executable, or a Mac package from [GitHub Releases](https://github.com/CodePraisy/Aurel/releases). npm is only needed when building from source.

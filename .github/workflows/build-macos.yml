@@ -1,16 +1,19 @@
-name: Build macOS packages
+name: Build release downloads
 on:
   push:
     branches: [main]
+    paths: ['.github/workflows/build-macos.yml']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
-  mac:
+  packages:
     strategy:
       fail-fast: false
       matrix:
         include:
+          - runner: windows-2025
+            arch: x64
           - runner: macos-15
             arch: arm64
           - runner: macos-15-intel
@@ -23,11 +26,34 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run typecheck && npm test
-      - run: npm run dist:mac -- --${{ matrix.arch }} --publish never
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node node_modules/electron-vite/bin/electron-vite.js build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node node_modules/electron-builder/cli.js --win nsis portable --publish never
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Move-Item -LiteralPath 'release/Aurel Setup 0.1.0.exe' -Destination 'release/Aurel-0.1.0-Windows-x64.exe'
+          Move-Item -LiteralPath 'release/Aurel 0.1.0.exe' -Destination 'release/Aurel-0.1.0-Windows-x64-Portable.exe'
+      - if: runner.os == 'macOS'
+        run: npm run dist:mac -- --${{ matrix.arch }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Aurel-macOS-${{ matrix.arch }}
-          path: release/Aurel-*-macOS-*.zip
-          if-no-files-found: error
+      - name: Attach packages to Aurel 0.1.0
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(release/Aurel-0.1.0-*.exe release/Aurel-0.1.0-macOS-*.zip)
+          test "${#files[@]}" -gt 0
+          for file in "${files[@]}"; do
+            name="${file##*/}"
+            existing=$(gh api "repos/$GITHUB_REPOSITORY/releases/436693734/assets" --jq ".[] | select(.name == \"$name\" and .state == \"uploaded\") | .id")
+            if [ -n "$existing" ]; then continue; fi
+            curl --fail-with-body --silent --show-error --retry 3 -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Content-Type: application/octet-stream' \
+              --data-binary "@$file" \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/436693734/assets?name=$name" > /dev/null
+          done
