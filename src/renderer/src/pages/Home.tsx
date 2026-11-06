@@ -49,7 +49,7 @@ export default function Home() {
 
         <section className="grid grid-cols-3 gap-4">
           {cards.map((c, i) => (
-            <button key={c.title} onClick={c.action} className="group card text-left p-6 hover:border-accent/50 hover:-translate-y-0.5 transition-all duration-200 animate-fadein relative overflow-hidden" style={{ animationDelay: `${i * 60}ms` }}>
+            <button key={c.title} onClick={c.action} className="group card home-feature text-left p-6 hover:border-accent/50 hover:-translate-y-0.5 transition-all duration-200 animate-fadein relative overflow-hidden" style={{ animationDelay: `${i * 60}ms` }}>
               <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-accent/[0.06] group-hover:bg-accent/[0.12] transition-colors" />
               <div className="h-11 w-11 rounded-xl bg-accent/12 bg-accent/10 text-accent flex items-center justify-center mb-5"><c.icon size={21} strokeWidth={1.7} /></div>
               <div className="font-display text-[21px] mb-1.5">{c.title}</div>

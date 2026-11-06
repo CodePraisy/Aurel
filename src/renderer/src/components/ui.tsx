@@ -31,10 +31,10 @@ export function Slider({ value, min, max, step = 0.01, onChange, className, titl
   return <input type="range" className={cx('slider', className)} title={title} aria-label={title} min={min} max={max} step={step} value={value} style={{ ['--pct' as string]: `${pct}%` }} onChange={(e) => onChange(+e.target.value)} />
 }
 
-export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label?: ReactNode }) {
+export function Toggle({ on, onChange, label, ariaLabel }: { on: boolean; onChange: (v: boolean) => void; label?: ReactNode; ariaLabel?: string }) {
   return (
     <label className="inline-flex items-center gap-2.5 cursor-pointer select-none">
-      <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className={cx('relative h-[18px] w-8 rounded-full transition-colors', on ? 'bg-accent' : 'bg-fg/15')}>
+      <button type="button" role="switch" aria-label={ariaLabel} aria-checked={on} onClick={() => onChange(!on)} className={cx('relative h-[18px] w-8 rounded-full transition-colors', on ? 'bg-accent' : 'bg-fg/15')}>
         <span className={cx('absolute left-0 top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow transition-transform', on ? 'translate-x-[16px]' : 'translate-x-[2px]')} />
       </button>
       {label && <span className="text-[13px]">{label}</span>}

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo, type CSSProperties } from 'react'
 
 /** Drawn cherry trees framing the window, with slowly falling petals. Purely decorative. */
 function Blossoms({ cx, cy, r, n, seed }: { cx: number; cy: number; r: number; n: number; seed: number }) {
@@ -23,21 +23,27 @@ function Blossoms({ cx, cy, r, n, seed }: { cx: number; cy: number; r: number; n
   )
 }
 
-export function SakuraScene({ reduceMotion, dim }: { reduceMotion: boolean; dim?: boolean }) {
+export const SakuraScene = memo(function SakuraScene({ dim }: { dim: boolean }) {
   const petals = useMemo(() => Array.from({ length: 22 }, (_, i) => ({
-    left: (i * 37) % 100, delay: -((i * 1.7) % 18), dur: 14 + ((i * 7) % 10), sway: 3 + (i % 4),
+    left: (i * 37) % 100, delay: -i * 1.87, duration: 16 + ((i * 7) % 12),
     drift: `${((i * 53) % 220) - 60}px`, spin: `${360 + ((i * 97) % 540)}deg`, scale: 0.6 + ((i * 13) % 10) / 14
   })), [])
-  const bark = '#3b1424'
+  const bark = '#64233e'
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 transition-opacity duration-500" style={{ opacity: dim ? 0.32 : 1 }} aria-hidden>
-      <div className="absolute inset-0" style={{ background: 'radial-gradient(1200px 700px at 85% -10%, rgb(255 120 168 / .16), transparent 60%), radial-gradient(900px 600px at -5% 110%, rgb(255 140 182 / .14), transparent 60%)' }} />
+    <div className={dim ? "theme-scene sakura-scene theme-scene-dim" : "theme-scene sakura-scene"} aria-hidden="true">
+      <div className="sakura-moon" />
+      <svg className="sakura-hills" viewBox="0 0 1200 260" preserveAspectRatio="none">
+        <path fill="#623354" d="M0 190C139 152 268 220 446 168S667 62 812 114s235 26 388-31v177H0z" />
+        <path fill="#351629" d="M0 213c203 21 305 11 456-7s204 37 369 15 270-83 375-88v127H0z" />
+      </svg>
       {/* left tree */}
-      <svg className="absolute -left-10 bottom-0 w-[520px] h-[560px] opacity-[0.55]" viewBox="0 0 520 560">
+      <svg className="sakura-tree-left absolute -left-10 bottom-0 w-[520px] h-[560px] opacity-[0.55]" viewBox="0 0 520 560">
         <path d="M120 560 C130 470 110 420 150 360 C185 305 175 250 230 200 C270 165 300 150 340 120" stroke={bark} strokeWidth="26" fill="none" strokeLinecap="round" />
         <path d="M165 345 C220 330 260 300 310 300 C350 300 380 280 410 260" stroke={bark} strokeWidth="12" fill="none" strokeLinecap="round" />
         <path d="M215 215 C190 170 150 150 110 140" stroke={bark} strokeWidth="10" fill="none" strokeLinecap="round" />
         <path d="M300 140 C330 100 360 80 400 70" stroke={bark} strokeWidth="8" fill="none" strokeLinecap="round" />
+        <path d="M165 345c-35 3-72 0-105-27m250-18c28-15 53-42 59-61m-146-28c39 6 73 1 99-17" stroke={bark} strokeWidth="5" fill="none" strokeLinecap="round" />
+        <Blossoms cx={72} cy={315} r={42} n={18} seed={13} />
         <Blossoms cx={350} cy={110} r={95} n={70} seed={3} />
         <Blossoms cx={140} cy={135} r={70} n={45} seed={7} />
         <Blossoms cx={400} cy={255} r={70} n={45} seed={11} />
@@ -51,9 +57,12 @@ export function SakuraScene({ reduceMotion, dim }: { reduceMotion: boolean; dim?
         <Blossoms cx={320} cy={195} r={55} n={30} seed={29} />
         <Blossoms cx={430} cy={70} r={70} n={45} seed={31} />
       </svg>
-      {!reduceMotion && petals.map((p, i) => (
-        <div key={i} className="petal" style={{ left: `${p.left}%`, animationDuration: `${p.dur}s, ${p.sway}s`, animationDelay: `${p.delay}s, ${p.delay}s`, transform: `scale(${p.scale})`, ['--drift' as string]: p.drift, ['--spin' as string]: p.spin }} />
+      {petals.map((p, i) => (
+        <div key={i} className="petal" style={{
+          left: p.left + "%", animationDuration: p.duration + "s", animationDelay: p.delay + "s",
+          "--petal-scale": p.scale, "--drift": p.drift, "--spin": p.spin
+        } as CSSProperties} />
       ))}
     </div>
   )
-}
+})

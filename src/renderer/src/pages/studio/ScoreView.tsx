@@ -135,7 +135,7 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
           if (autoScroll && player.state === 'playing' && si !== lastSys && scroller.current) {
             lastSys = si
             const sc = scroller.current
-            sc.scrollTo({ top: Math.max(0, sys.top * zoom - sc.clientHeight * 0.16), behavior: 'smooth' })
+            sc.scrollTo({ top: Math.max(0, sys.top * zoom - sc.clientHeight * 0.16), behavior: document.documentElement.dataset.motion === 'reduce' ? 'instant' : 'smooth' })
           }
         } else {
           el.style.display = 'none'
@@ -157,7 +157,7 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
     const sys = systemForMeasure(layout, cursor.measure)
     const sc = scroller.current
     if (!sys || !sc) return
-    if (sys.top * zoom < sc.scrollTop || sys.bottom * zoom > sc.scrollTop + sc.clientHeight) sc.scrollTo({ top: Math.max(0, sys.top * zoom - 80), behavior: 'smooth' })
+    if (sys.top * zoom < sc.scrollTop || sys.bottom * zoom > sc.scrollTop + sc.clientHeight) sc.scrollTo({ top: Math.max(0, sys.top * zoom - 80), behavior: document.documentElement.dataset.motion === 'reduce' ? 'instant' : 'smooth' })
   }, [cursor, layout, zoom])
 
   const hit = (e: React.MouseEvent) => {

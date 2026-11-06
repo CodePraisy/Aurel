@@ -74,6 +74,7 @@ These changes are available when running the current source. The downloads above
 - **Composing** supports **Ctrl+S** (or **Cmd+S** on Mac), live title and composer edits, and cover photos from the project’s cover or the library context menu. Use the Back button to return from Settings to the score. The score adds space around high and low notes. In **Settings → Editor**, choose whether new piano, E-Piano and organ parts default to one or two staves.
 - **Guitar and bass** support custom open-string pitches. **Suggest tuning** ranks compatible presets by how playable the written notes are.
 - **VST3 on Windows** can use installed instruments as named presets with an instrument type under **Settings → Instrument sounds → Your instruments**. In Studio, double-click a VST3 track’s name or open its context menu to edit the plug-in. **Settings → Default effects** plays major and minor scales in a random key through the draft chain, with a Stop button.
+- **Appearance** adds floating musical notes and rests to Dark and Light, and a moonlit cherry-blossom scene to Sakura. **Settings → Appearance → Reduce motion** applies across all themes.
 - **Updates** are checked on first launch and at startup by default. The small version widget at the bottom left can also check on demand and offers to install a newer release when a compatible download is available.
 
 ## Features in more detail

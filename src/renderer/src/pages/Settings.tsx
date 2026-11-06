@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Palette, Volume2, Cpu, Download, Upload, Keyboard, Info, RefreshCw, Check, Loader2, Speaker, PenLine, Music, Scale, Plug, KeyboardMusic, SlidersHorizontal } from 'lucide-react'
 import { packFor, SOUND_PACKS, type PackStatus } from '@shared/sounds'
 import type { Settings, UpdateInfo } from '@shared/types'
+import { MusicMark } from '@/components/MusicScene'
 import { useApp } from '@/store/app'
 import { useProject } from '@/store/project'
 import { api } from '@/lib/api'
@@ -119,11 +120,7 @@ export default function SettingsPage({ section }: { section?: string }) {
   const set = (p: Partial<Settings>) => void updateSettings(p)
   const installJob = Object.values(jobs).find((j) => j.kind === 'install')
 
-  const themes: { k: Settings['theme']; label: string; bg: string; panel: string; accent: string; ink: string }[] = [
-    { k: 'dark', label: 'Dark', bg: '#0d0e12', panel: '#1d1f27', accent: '#dcb670', ink: '#dedad0' },
-    { k: 'light', label: 'Light', bg: '#f4f3ef', panel: '#ffffff', accent: '#a87a28', ink: '#1e1c1a' },
-    { k: 'sakura', label: 'Sakura', bg: '#220f1b', panel: '#311626', accent: '#ff78a8', ink: '#ffe9f1' }
-  ]
+  const themes = [{ k: 'dark', label: 'Dark' }, { k: 'light', label: 'Light' }, { k: 'sakura', label: 'Sakura' }] as const
 
   return (
     <div className="h-full flex">
@@ -142,13 +139,13 @@ export default function SettingsPage({ section }: { section?: string }) {
               <h2 className="font-display text-[22px] mb-4">Appearance</h2>
               <div className="grid grid-cols-3 gap-3 mb-6">
                 {themes.map((t) => (
-                  <button key={t.k} onClick={() => set({ theme: t.k })} className={cx('rounded-xl border-2 p-1.5 text-left transition-colors', s.theme === t.k ? 'border-accent' : 'border-line hover:border-faint')}>
-                    <div className="rounded-lg h-[92px] p-2.5 flex gap-2" style={{ background: t.bg }}>
-                      <div className="w-5 rounded-md" style={{ background: t.panel }} />
-                      <div className="flex-1 rounded-md p-2 flex flex-col gap-1.5" style={{ background: t.panel }}>
-                        {[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-px" style={{ background: t.ink, opacity: 0.35 }} />)}
-                        <div className="flex gap-1 mt-1">{[0, 1, 2].map((i) => <div key={i} className="h-2 w-2 rounded-full" style={{ background: i === 1 ? t.accent : t.ink }} />)}</div>
-                      </div>
+                  <button key={t.k} onClick={() => set({ theme: t.k })} aria-pressed={s.theme === t.k} className={cx('rounded-xl border-2 p-1.5 text-left transition-colors', s.theme === t.k ? 'border-accent' : 'border-line hover:border-faint')}>
+                    <div className="theme-preview" data-theme={t.k} aria-hidden="true">
+                      <div className="theme-preview-staff" />
+                      {t.k === 'sakura' ? <span className="theme-preview-blossom">✿</span> : <>
+                        <MusicMark kind="eighth" className="theme-preview-note" />
+                        <MusicMark kind="quarter-rest" className="theme-preview-rest" />
+                      </>}
                     </div>
                     <div className="px-1 pt-1.5 pb-0.5 flex items-center justify-between text-[13px] font-medium">{t.label}{s.theme === t.k && <Check size={14} className="text-accent" />}</div>
                   </button>
@@ -166,7 +163,7 @@ export default function SettingsPage({ section }: { section?: string }) {
               <Row title="Interface size" desc="Scale the whole interface.">
                 <div className="seg">{[0.9, 1, 1.1, 1.25].map((z) => <button key={z} className={cx(s.uiScale === z && 'on')} onClick={() => set({ uiScale: z })}>{Math.round(z * 100)}%</button>)}</div>
               </Row>
-              {s.theme === 'sakura' && <Row title="Reduce motion" desc="Turns off interface animations and falling petals."><Toggle on={s.reduceMotion} onChange={(v) => set({ reduceMotion: v })} /></Row>}
+              <Row title="Reduce motion" desc="Keeps notes and rests still, hides falling petals, and turns off interface animations across all themes."><Toggle ariaLabel="Reduce motion" on={s.reduceMotion} onChange={(v) => set({ reduceMotion: v })} /></Row>
             </>
           )}
           {sec === 'playback' && (

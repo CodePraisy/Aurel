@@ -4,6 +4,7 @@ import { midi } from '@/audio/midi'
 import { useProject } from '@/store/project'
 import { ContextMenuHost } from '@/components/menu'
 import { SakuraScene } from '@/components/Sakura'
+import { MusicScene } from '@/components/MusicScene'
 import { ArrowLeft, RefreshCw, Home as HomeIcon, Library as LibraryIcon, Settings as SettingsIcon, Music2, X, Check, AlertCircle, Info, FileAudio } from 'lucide-react'
 import { useApp } from '@/store/app'
 import { api } from '@/lib/api'
@@ -100,9 +101,17 @@ export default function App() {
     const r = document.documentElement
     r.dataset.theme = settings.theme
     r.dataset.accent = settings.theme === 'sakura' ? '' : settings.accent
-    r.dataset.motion = settings.theme === 'sakura' && settings.reduceMotion ? 'reduce' : ''
     ;(window as unknown as { __aurelSettings: typeof settings }).__aurelSettings = settings
   }, [settings])
+  useEffect(() => {
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sync = () => {
+      document.documentElement.dataset.motion = settings?.reduceMotion || preference.matches ? 'reduce' : ''
+    }
+    sync()
+    preference.addEventListener('change', sync)
+    return () => preference.removeEventListener('change', sync)
+  }, [settings?.reduceMotion])
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -151,7 +160,7 @@ export default function App() {
 
   return (
     <div className="h-full flex relative">
-      {settings.theme === 'sakura' && <SakuraScene reduceMotion={settings.reduceMotion} dim={route.name !== 'home'} />}
+      {settings.theme === 'sakura' ? <SakuraScene dim={route.name !== 'home'} /> : <MusicScene dim={route.name !== 'home'} />}
       <nav className="relative z-10 w-[60px] shrink-0 flex flex-col items-center pt-3 pb-3 gap-1 border-r border-line bg-panel/60 drag">
         <div className="h-9 w-9 mb-3 rounded-xl bg-accent/15 text-accent flex items-center justify-center no-drag" title="Aurel">
           <Logo />
