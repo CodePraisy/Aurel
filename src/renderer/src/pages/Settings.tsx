@@ -7,7 +7,7 @@ import { useApp } from '@/store/app'
 import { useProject } from '@/store/project'
 import { api } from '@/lib/api'
 import { Select } from '@/components/menu'
-import { cx, Slider, Toggle, Progress } from '@/components/ui'
+import { cx, Slider, Toggle, Progress, moveMenuFocus } from '@/components/ui'
 import { CHORD_SHORTCUT, SHORTCUTS } from './studio/shortcuts'
 import { usePlayer } from './studio/Transport'
 import EffectsSettings from './studio/EffectsSettings'
@@ -124,10 +124,13 @@ export default function SettingsPage({ section }: { section?: string }) {
 
   return (
     <div className="h-full flex">
-      <aside className="w-[220px] shrink-0 px-3 pt-1 border-r border-line">
+      <aside aria-label="Settings categories" data-keyboard-menu="" onKeyDown={(event) => {
+        moveMenuFocus(event, Array.from(event.currentTarget.querySelectorAll("button:not(:disabled)")))
+        if (event.defaultPrevented && document.activeElement instanceof HTMLButtonElement) document.activeElement.click()
+      }} className="w-[220px] shrink-0 px-3 pt-1 border-r border-line">
         <h1 className="font-display text-[26px] px-2 mb-4">Settings</h1>
         {SECTIONS.map((x) => (
-          <button key={x.k} onClick={() => setSec(x.k)} className={cx('w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px]', sec === x.k ? 'bg-accent/10 text-accent' : 'text-muted hover:text-fg hover:bg-fg/[0.05]')}>
+          <button key={x.k} autoFocus={sec === x.k} aria-current={sec === x.k ? "true" : undefined} onClick={() => setSec(x.k)} className={cx('w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px]', sec === x.k ? 'bg-accent/10 text-accent' : 'text-muted hover:text-fg hover:bg-fg/[0.05]')}>
             <x.icon size={16} /> {x.label}
           </button>
         ))}

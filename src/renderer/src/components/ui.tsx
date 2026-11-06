@@ -66,9 +66,9 @@ export function Artwork({ id, artwork, title, size = 44, className }: { id: stri
   )
 }
 
-export function moveMenuFocus(event: React.KeyboardEvent, buttons: HTMLButtonElement[], horizontal = true): void {
+export function moveMenuFocus(event: React.KeyboardEvent, buttons: HTMLElement[], horizontal = true): void {
   if ((event.target as HTMLElement).closest("input, textarea, select, [contenteditable]") || !buttons.length) return
-  const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+  const index = buttons.indexOf(document.activeElement as HTMLElement)
   let next: number
   if (event.key === "Home") next = 0
   else if (event.key === "End") next = buttons.length - 1
