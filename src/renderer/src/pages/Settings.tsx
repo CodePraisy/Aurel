@@ -315,6 +315,7 @@ export default function SettingsPage({ section }: { section?: string }) {
           {sec === 'about' && (
             <>
               <h2 className="font-display text-[22px] mb-1">Aurel {api.updates.version()}</h2>
+              <p className="text-muted text-[13px] mb-3">by Praise Onuoha</p>
               <p className="text-muted mb-5">Notation-first transcription, composition and practice.</p>
               <UpdatesCard s={s} set={set} />
               <div className="card p-5 space-y-3 text-[13px] leading-relaxed">
