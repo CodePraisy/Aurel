@@ -3,6 +3,11 @@ param([string]$Sdk = (Join-Path $env:TEMP 'aurel-vst3sdk-3.8.1'))
 $ErrorActionPreference = 'Stop'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '../..')
 $build = Join-Path $env:TEMP 'aurel-vst-host-build'
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+$instance = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json | ConvertFrom-Json
+if (!$instance) { throw 'Visual Studio with the C++ workload is required.' }
+$major = ([version]$instance[0].installationVersion).Major
+$generator = if ($major -ge 18) { 'Visual Studio 18 2026' } else { 'Visual Studio 17 2022' }
 $out = Join-Path $repo 'build/vst-host'
 $sdkVersion = 'v3.8.1_build_84'
 $cmake = (Get-Command cmake -ErrorAction SilentlyContinue).Source
@@ -20,7 +25,7 @@ if (!(Test-Path -LiteralPath (Join-Path $Sdk 'CMakeLists.txt'))) {
 & git -C $Sdk submodule update --init --depth 1 base cmake pluginterfaces public.sdk
 if ($LASTEXITCODE) { throw 'Could not fetch the VST3 SDK dependencies.' }
 
-& $cmake -S $PSScriptRoot -B $build -G 'Visual Studio 17 2022' -A x64 "-DVST3_SDK=$Sdk"
+& $cmake -S $PSScriptRoot -B $build -G $generator -A x64 "-DVST3_SDK=$Sdk"
 if ($LASTEXITCODE) { throw 'Could not configure the VST3 host.' }
 & $cmake --build $build --config Release --target aurel-vst-host --parallel
 if ($LASTEXITCODE) { throw 'Could not build the VST3 host.' }
