@@ -4,14 +4,14 @@
 
 Aurel separates a recording into instrument stems (vocals, drums, bass, guitar, piano, other) and transcribes each stem into standard notation and guitar tablature. It also gives you a synchronized practice player, a full score editor, and real-time hosting for VST3 instruments and effects on Windows. Projects, audio and AI processing all stay on your machine.
 
-## Download — v0.4.4
+## Download — v0.4.5
 
-- [`Aurel-0.4.4-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.4/Aurel-0.4.4-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
-- [`Aurel-0.4.4-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.4/Aurel-0.4.4-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
-- [`Aurel-0.4.4-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.4/Aurel-0.4.4-macOS-arm64.zip) (Mac with Apple silicon)
-- [`Aurel-0.4.4-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.4/Aurel-0.4.4-macOS-x64.zip) (Mac with an Intel processor)
+- [`Aurel-0.4.5-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.5/Aurel-0.4.5-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
+- [`Aurel-0.4.5-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.5/Aurel-0.4.5-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
+- [`Aurel-0.4.5-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.5/Aurel-0.4.5-macOS-arm64.zip) (Mac with Apple silicon)
+- [`Aurel-0.4.5-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.5/Aurel-0.4.5-macOS-x64.zip) (Mac with an Intel processor)
 
-[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.4.4)
+[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.4.5)
 
 To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: Apple M…** means Apple silicon. **Processor: Intel** means Intel.
 
@@ -25,14 +25,14 @@ To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: A
 
 ### Windows (installer)
 
-1. Download `Aurel-0.4.4-Windows-x64.exe` and run it.
+1. Download `Aurel-0.4.5-Windows-x64.exe` and run it.
 2. If Microsoft Defender SmartScreen shows **"Windows protected your PC"**, select **More info → Run anyway**. The warning appears because the build is not yet code-signed.
 3. Complete the setup wizard; the defaults are fine. During installation, the AI transcription engine is downloaded and configured (one-time, 3–5 GB), so an internet connection is required. If this step is interrupted, Aurel still installs, and you can finish later from **Settings → AI Engine**.
 4. Launch **Aurel** from the Start menu or the desktop shortcut.
 
 ### Windows (portable)
 
-Download `Aurel-0.4.4-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
+Download `Aurel-0.4.5-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
 
 ### macOS
 
@@ -67,11 +67,11 @@ Download `Aurel-0.4.4-Windows-x64-Portable.exe` and run it from any folder or a 
 
 ---
 
-## Changes on main
+## What’s new in v0.4.5
 
 Transcription progress aligns with its bar. YouTube previews and imports validate the current link consistently. Before transcribing, select source groups and instrument types or use automatic detection. Leading empty bars are omitted, and playback skips the removed introduction. PDF export offers score size, bar spacing, and a preview in your PDF viewer.
 
-Windows installer packaging is pending review of the Defender detection on the VST3 helper.
+Windows releases rebuild the VST3 helper from source and require a successful Defender scan before packaging.
 
 ## What’s new in v0.4.4
 

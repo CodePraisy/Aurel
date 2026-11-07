@@ -45,6 +45,19 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run typecheck && npm test
+      - name: Build and scan the Windows VST3 helper
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./native/vst-host/build.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $helper = (Resolve-Path 'build/vst-host/aurel-vst-host.exe').Path
+          $started = Get-Date
+          Start-MpScan -ScanType CustomScan -ScanPath $helper -ErrorAction Stop
+          $detections = Get-MpThreatDetection -ErrorAction Stop | Where-Object {
+            $_.InitialDetectionTime -ge $started.AddMinutes(-1) -and ($_.Resources -join ' ').Contains($helper)
+          }
+          if ($detections -or !(Test-Path -LiteralPath $helper)) { throw 'Defender flagged the rebuilt VST3 helper. Windows publishing stopped.' }
       - if: runner.os == 'Windows'
         shell: pwsh
         run: |
