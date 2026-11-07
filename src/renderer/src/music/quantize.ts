@@ -114,8 +114,11 @@ export function analysisToScore(a: EngineAnalysis, title: string, composer: stri
   const mt = measureTicks(ts)
   const measureSec = (mt / PPQ) * (60 / tempo)
   const all = Object.values(a.notes).flat()
-  const firstNote = Math.min(...all.map((n) => n.s), ...(a.drums ?? []).map((d) => d.t), grid?.offset ?? a.beatOffset)
+  const firstNote = Math.min(...all.filter((n) => n.e - n.s >= 0.06).map((n) => n.s), ...(a.drums ?? []).map((d) => d.t))
   let offset = grid?.offset ?? a.downbeat ?? a.beatOffset
+  if (Number.isFinite(firstNote) && firstNote - offset >= measureSec) {
+    offset += Math.floor((firstNote - offset) / measureSec) * measureSec
+  }
   // Step back if the recording has notes before the detected downbeat.
   const beatSec = 60 / tempo
   if (isFinite(firstNote) && firstNote < offset - 0.03) offset = Math.max(0, offset - Math.ceil((offset - firstNote - 0.03) / beatSec) * beatSec)

@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, X, Youtube, AlertTriangle, Loader2, Upload } from 'lucide-react'
 import type { InstrumentKind, YouTubeCheck } from '@shared/types'
 import { useApp } from '@/store/app'
+import { parseYouTubeId } from '@shared/youtube'
 import { api } from '@/lib/api'
 import { Select } from '@/components/menu'
 import { Modal, cx, fmtTime, Popover, MenuItem } from '@/components/ui'
@@ -83,20 +84,44 @@ export function YouTubeDialog() {
   const [res, setRes] = useState<YouTubeCheck | null>(null)
   const close = () => { setDialog(null); setRes(null); setUrl('') }
   const needsTerms = !settings?.termsAccepted
+  const request = useRef(0)
+  const importing = useRef(false)
+  const [importBusy, setImportBusy] = useState(false)
+  const [checkedUrl, setCheckedUrl] = useState("")
 
   const check = async () => {
+    const input = url.trim(), token = ++request.current
     setChecking(true)
     setRes(null)
-    try { setRes(await api.youtube.check(url)) } finally { setChecking(false) }
+    try {
+      const result = await api.youtube.check(input)
+      if (token === request.current) { setRes(result); setCheckedUrl(input) }
+    } catch (error) { if (token === request.current) useApp.getState().toast((error as Error).message, "error") }
+    finally { if (token === request.current) setChecking(false) }
   }
+  useEffect(() => {
+    request.current++
+    setRes(null)
+    setCheckedUrl("")
+    setChecking(false)
+    if (dialog !== "youtube" || !parseYouTubeId(url)) return
+    const timer = setTimeout(() => void check(), 400)
+    return () => { clearTimeout(timer); request.current++ }
+  }, [url, dialog])
   const acquire = async () => {
-    if (needsTerms) await updateSettings({ termsAccepted: true })
-    const { jobId } = await api.youtube.acquire(url)
-    track(jobId, res?.meta?.title ?? 'YouTube import')
-    close()
+    if (importing.current || checking || checkedUrl !== url.trim() || !res?.acquirable) return
+    importing.current = true
+    setImportBusy(true)
+    try {
+      if (needsTerms) await updateSettings({ termsAccepted: true })
+      const { jobId } = await api.youtube.acquire(url.trim())
+      track(jobId, res.meta?.title ?? "YouTube import")
+      close()
+    } catch (error) { useApp.getState().toast((error as Error).message, "error") }
+    finally { importing.current = false; setImportBusy(false) }
   }
   const pickFile = async () => { const p = await api.media.pickAudio(); if (p) { void importFile(p); close() } }
-  const valid = /youtu\.?be/.test(url)
+  const valid = !!parseYouTubeId(url)
 
   return (
     <Modal open={dialog === 'youtube'} onClose={close} title={<span className="flex items-center gap-2"><Youtube size={20} className="text-accent" /> Import from YouTube</span>} width={580}
@@ -105,10 +130,10 @@ export function YouTubeDialog() {
         <button className="btn-ghost" onClick={close}>Cancel</button>
         {res?.duplicateOf
           ? <button className="btn-primary" onClick={() => { useApp.getState().go({ name: 'studio', projectId: res.duplicateOf! }); close() }}>Open existing</button>
-          : <button className="btn-primary" disabled={!valid || (res !== null && !res.acquirable)} onClick={acquire}>{needsTerms ? 'Agree & import' : 'Download recording'}</button>}
+          : <button className="btn-primary" disabled={!valid || checking || importBusy || checkedUrl !== url.trim() || !res?.acquirable} onClick={acquire}>{needsTerms ? 'Agree & import' : 'Download recording'}</button>}
       </>}>
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void check() }}>
-        <input className="field" placeholder="https://www.youtube.com/watch?v=…" value={url} onChange={(e) => { setUrl(e.target.value); setRes(null) }} onPaste={() => setTimeout(() => void check(), 50)} autoFocus />
+        <input className="field" placeholder="https://www.youtube.com/watch?v=…" value={url} onChange={(e) => { setUrl(e.target.value); setRes(null) }} autoFocus />
         <button className="btn-soft !h-9" disabled={!url.trim() || checking}>{checking ? <Loader2 size={15} className="animate-spin" /> : 'Preview'}</button>
       </form>
       {res?.error && <div className="mt-3 text-bad text-[13px]">{res.error}</div>}

@@ -19,7 +19,7 @@ export default function PrintView() {
       const score = { ...p.score, parts: parts.map((x) => ({ ...x, measures: x.measures.slice(params.from ?? 0, (params.to ?? x.measures.length - 1) + 1) })) }
       await document.fonts.ready
       const el = ref.current!
-      renderScore(el, score, { parts: score.parts, mode: params.mode as 'staff' | 'tab' | 'both', width: 760, zoom: 1, header: true, split: true, colors: { ink: '#111', paper: '#fff', staff: '#555', faint: '#666', accent: '#000' } })
+      renderScore(el, score, { parts: score.parts, mode: params.mode as 'staff' | 'tab' | 'both', width: 760, zoom: Math.max(0.5, Math.min(1.4, params.scale ?? 1)), spacing: Math.max(0.7, Math.min(1.5, params.spacing ?? 1)), header: true, split: true, colors: { ink: '#111', paper: '#fff', staff: '#555', faint: '#666', accent: '#000' } })
       setMsg('')
       requestAnimationFrame(() => api.print.ready())
     })()

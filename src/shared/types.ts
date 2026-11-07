@@ -94,6 +94,7 @@ export interface ProjectAudio {
   offset: number // seconds of audio that correspond to tick 0
   tempoLinked?: boolean
   referenceTempo?: number
+  startAt?: number // recording start used when transcription removes leading empty bars
   trimmed?: number // seconds of leading silence removed from the original file
   sourceUrl?: string
   youtube?: YouTubeMeta
@@ -116,6 +117,7 @@ export interface RhythmEstimate {
 }
 
 export interface Project {
+  instrumentHints?: Partial<Record<TranscriptionSource, InstrumentKind>>
   id: string
   kind: 'transcription' | 'composition'
   created: number

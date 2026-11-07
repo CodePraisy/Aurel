@@ -67,6 +67,12 @@ Download `Aurel-0.4.4-Windows-x64-Portable.exe` and run it from any folder or a 
 
 ---
 
+## Changes on main
+
+Transcription progress aligns with its bar. YouTube previews and imports validate the current link consistently. Before transcribing, select source groups and instrument types or use automatic detection. Leading empty bars are omitted, and playback skips the removed introduction. PDF export offers score size, bar spacing, and a preview in your PDF viewer.
+
+Windows installer packaging is pending review of the Defender detection on the VST3 helper.
+
 ## What’s new in v0.4.4
 
 Arrow keys switch Settings categories immediately. On Home and in the main sidebar, use the arrow keys to move and Enter to open the focused item.

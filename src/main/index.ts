@@ -101,7 +101,7 @@ function registerProtocol(): void {
 
 // ---------- PDF printing ----------
 const printParams = new Map<number, unknown>()
-async function printPdf(projectId: string, out: string, opts: Record<string, unknown>): Promise<void> {
+async function printPdf(projectId: string, out: string | null, opts: Record<string, unknown>): Promise<void> {
   const win = new BrowserWindow({ show: false, width: 1100, height: 1400, webPreferences: secureWebPreferences() })
   printParams.set(win.webContents.id, { projectId, ...opts })
   try {
@@ -112,7 +112,12 @@ async function printPdf(projectId: string, out: string, opts: Record<string, unk
     loadRenderer(win, 'print')
     await ready
     const pdf = await win.webContents.printToPDF({ pageSize: 'Letter', printBackground: true, margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 } })
-    fs.writeFileSync(out, pdf)
+    const target = out ?? join(app.getPath("temp"), "Aurel-preview-" + newId() + ".pdf")
+    fs.writeFileSync(target, pdf)
+    if (!out) {
+      const error = await shell.openPath(target)
+      if (error) throw new Error(error)
+    }
   } finally {
     printParams.delete(win.webContents.id)
     win.destroy()
@@ -309,6 +314,7 @@ function registerIpc(): void {
     fs.writeFileSync(tmp, Buffer.from(wav))
     try { await convertWav(null, tmp, path, format) } finally { fs.rmSync(tmp, { force: true }) }
   })
+  h('export:previewPdf', (_e, id: string, opts: Record<string, unknown>) => printPdf(id, null, opts))
   h('export:pdf', (_e, id: string, out: string, opts: Record<string, unknown>) => printPdf(id, out, opts))
   h('export:openPath', (_e, p: string) => shell.openPath(p))
   h('print:params', (e) => printParams.get(e.sender.id) ?? null)

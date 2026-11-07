@@ -140,12 +140,17 @@ export async function applyAnalysis(projectId: string): Promise<void> {
     tempo: project.audio.tempoLinked ? project.audio.referenceTempo ?? detectedBpm(project) ?? project.score.tempo : project.score.tempo,
     offset: project.audio.offset
   } : undefined
+  for (const stem of a.stems) {
+    const family = stem.name.replace(/_[LR]$/, "") as keyof NonNullable<Project["instrumentHints"]>
+    const hint = project.instrumentHints?.[family]
+    if (hint) { stem.kind = hint; stem.confidence = 1 }
+  }
   a.tempo = Math.round(a.tempo)
   const timeSig = grid ? project.score.timeSig : a.timeSig ?? project.score.timeSig
   const { score, offset, key } = analysisToScore(a, project.score.title, project.score.composer, timeSig, grid, useApp.getState().settings?.pianoGrandStaff)
   if (editedTempo) score.tempo = project.score.tempo
   project.score = score
-  project.audio = { ...project.audio!, offset }
+  project.audio = { ...project.audio!, offset, startAt: offset - (project.audio?.offset ?? 0) >= 60 / score.tempo * score.timeSig.num * 4 / score.timeSig.den ? offset : project.audio?.startAt }
   project.analysis = { status: 'done', device: a.device, rhythm, detectedTempo: rhythm ? Math.round(rhythm.bpm) : a.tempo, detectedKey: key, finishedAt: Date.now() }
   project.view = { mode: useApp.getState().settings?.defaultView ?? 'both', zoom: 1, part: score.parts.find((p) => p.kind.includes('guitar'))?.id ?? score.parts[0]?.id ?? 'all' }
   project.updated = Date.now()

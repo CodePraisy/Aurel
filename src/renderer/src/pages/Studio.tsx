@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, Sparkles, ZoomIn, ZoomOut, PanelBottom, Loader2, Check, AlertTriangle, Star, RefreshCw } from 'lucide-react'
-import { TRANSCRIPTION_SOURCES, type Project, type TranscriptionSource } from '@shared/types'
+import { TRANSCRIPTION_SOURCES, type InstrumentKind, type Project, type TranscriptionSource } from '@shared/types'
 import { applyRhythmEstimate, detectedBpm } from '@shared/rhythm'
 import { useApp, pendingProcess } from '@/store/app'
 import Rack from './studio/Rack'
@@ -238,10 +238,10 @@ export default function Studio({ projectId }: { projectId: string }) {
           <Sparkles size={16} className="text-accent shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="text-[13px] font-medium flex items-baseline gap-2">
-              <span className="min-w-0 truncate">{installJob && !job ? `Installing AI engine · ${installJob.stage}` : job?.stage ?? 'Processing…'} <span className="text-muted font-normal">{(job ?? installJob)?.message}</span></span>
+              <span className="min-w-0 flex-1 truncate">{installJob && !job ? `Installing AI engine · ${installJob.stage}` : job?.stage ?? 'Processing…'} <span className="text-muted font-normal">{(job ?? installJob)?.message}</span></span>
               {((job ?? installJob)?.pct ?? -1) >= 0 && <span className="ml-auto shrink-0 tabular-nums text-accent" aria-label="Progress">{Math.floor(((job ?? installJob)!.pct) * 100)}%</span>}
             </div>
-            <Progress pct={(job ?? installJob)?.pct ?? -1} className="mt-1.5 max-w-[520px]" />
+            <Progress pct={(job ?? installJob)?.pct ?? -1} className="mt-1.5" />
           </div>
           <button className="btn-ghost" onClick={() => api.jobs.cancel((job ?? installJob)!.jobId)}>Cancel</button>
         </div>
@@ -293,7 +293,8 @@ export default function Studio({ projectId }: { projectId: string }) {
         })
         setTransposeTarget(null)
       }} />}
-      {transcribeOpen && <TranscriptionDialog onClose={() => setTranscribeOpen(false)} onStart={(sources) => {
+      {transcribeOpen && <TranscriptionDialog onClose={() => setTranscribeOpen(false)} onStart={(sources, hints) => {
+        patchProject((next) => { next.instrumentHints = hints })
         setTranscribeOpen(false)
         void processProject(p.id, sources)
       }} />}
@@ -339,14 +340,16 @@ function RhythmEditor({ field, project, onClose, setTempo, setTimeSig }: {
   )
 }
 
-function TranscriptionDialog({ onClose, onStart }: { onClose: () => void; onStart: (sources?: TranscriptionSource[]) => void }) {
+function TranscriptionDialog({ onClose, onStart }: { onClose: () => void; onStart: (sources?: TranscriptionSource[], hints?: Project["instrumentHints"]) => void }) {
   const [auto, setAuto] = useState(true)
   const [selected, setSelected] = useState<TranscriptionSource[]>([])
+  const [hints, setHints] = useState<NonNullable<Project["instrumentHints"]>>({})
+  const choices: Partial<Record<TranscriptionSource, InstrumentKind[]>> = { guitar: ["acoustic-guitar", "clean-guitar", "distorted-guitar"], piano: ["piano", "epiano", "organ"], other: ["strings", "brass", "woodwinds", "synth", "vocals"] }
   const labels = { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano / keys', other: 'Other instruments' }
   return (
     <Modal open title="Transcribe recording" onClose={onClose} width={420} footer={<>
       <button className="btn-ghost" onClick={onClose}>Cancel</button>
-      <button className="btn-primary" disabled={!auto && !selected.length} onClick={() => onStart(auto ? undefined : selected)}>Start transcription</button>
+      <button className="btn-primary" disabled={!auto && !selected.length} onClick={() => onStart(auto ? undefined : selected, auto ? undefined : hints)}>Start transcription</button>
     </>}>
       <div className="seg w-fit mb-3" role="group" aria-label="Instrument detection">
         <button aria-pressed={auto} className={cx(auto && 'on')} onClick={() => setAuto(true)}>Detect automatically</button>
@@ -358,6 +361,7 @@ function TranscriptionDialog({ onClose, onStart }: { onClose: () => void; onStar
             <input type="checkbox" checked={selected.includes(source)} onChange={(event) => setSelected((current) =>
               event.target.checked ? [...current, source] : current.filter((item) => item !== source))} />{labels[source]}
           </label>)}
+          {selected.filter((source) => choices[source]).map((source) => <div key={source} className="col-span-2"><div className="label mb-1">{labels[source]} sound</div><Select value={hints[source] ?? ""} onChange={(kind) => setHints({ ...hints, [source]: kind || undefined })} options={[{ value: "", label: "Let the model decide" }, ...choices[source]!.map((kind) => ({ value: kind, label: INSTRUMENTS[kind].label }))]} /></div>)}
         </div>}
     </Modal>
   )

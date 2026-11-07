@@ -1,3 +1,4 @@
+import { parseYouTubeId } from '../src/shared/youtube'
 import { detectedBpm, recordingRate } from '../src/shared/rhythm'
 import { newer } from '../src/shared/version'
 import { noteFromName } from '../src/shared/sounds'
@@ -309,5 +310,22 @@ describe('shift back and drag', () => {
     expect(diatonicShift(65, 1, 1)).toBe(66) // F natural is written E#, so one step up is F#
     expect(diatonicShift(60, -1, 0)).toBe(59)
     expect(diatonicShift(60, 7, 0)).toBe(72)
+  })
+})
+
+describe("YouTube video links", () => {
+  it("uses the same parser for pasted, mobile, and short links", () => {
+    expect(parseYouTubeId(" https://youtu.be/dQw4w9WgXcQ?si=abc ")).toBe("dQw4w9WgXcQ")
+    expect(parseYouTubeId("https://music.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ")
+    expect(parseYouTubeId("https://notyoutube.com/watch?v=dQw4w9WgXcQ")).toBeNull()
+  })
+})
+
+describe("Transcription leading rests", () => {
+  it("omits complete empty bars before the first detected note", () => {
+    const analysis = { tempo: 120, beatOffset: 0, downbeat: 0, device: "cpu", stems: [{ name: "piano", file: "stems/piano.wav", kind: "piano", confidence: 1 }], notes: { piano: [{ s: 8, e: 8.5, p: 64, v: 90 }] } } as Parameters<typeof analysisToScore>[0]
+    const result = analysisToScore(analysis, "Intro", "", { num: 4, den: 4 })
+    expect(result.offset).toBe(8)
+    expect(result.score.parts[0].measures[0].events.find((event) => !event.rest)?.start).toBe(0)
   })
 })

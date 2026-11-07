@@ -30,6 +30,7 @@ export interface SystemLayout {
 export interface ScoreLayout { width: number; height: number; zoom: number; systems: SystemLayout[] }
 
 export interface RenderOptions {
+  spacing?: number
   parts: Part[]
   mode: ViewMode
   width: number // css px available
@@ -110,9 +111,9 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
   let line: number[] = []
   let used = 0
   for (let mi = 0; mi < count; mi++) {
-    const w = measureMinWidth(score, parts, mi) + headerW(line.length === 0, mi === 0)
+    const w = (measureMinWidth(score, parts, mi) * (o.spacing ?? 1)) + headerW(line.length === 0, mi === 0)
     if (line.length && used + w > W - marginL - marginR) { systemsIdx.push(line); line = []; used = 0 }
-    used += line.length === 0 ? measureMinWidth(score, parts, mi) + headerW(true, mi === 0) : w
+    used += line.length === 0 ? (measureMinWidth(score, parts, mi) * (o.spacing ?? 1)) + headerW(true, mi === 0) : w
     line.push(mi)
   }
   if (line.length) systemsIdx.push(line)
@@ -185,7 +186,7 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
     if (o.split && si > 0) ctx = chunk(sy, (systemMetrics[si + 1]?.top ?? totalH) - sy)
     const firstSystem = si === 0
     // widths: stretch to fill (last system only if it's at least 60% full)
-    const mins = mis.map((mi, k) => measureMinWidth(score, parts, mi) + headerW(k === 0, mi === 0))
+    const mins = mis.map((mi, k) => (measureMinWidth(score, parts, mi) * (o.spacing ?? 1)) + headerW(k === 0, mi === 0))
     const avail = W - marginL - marginR
     const total = mins.reduce((a, b) => a + b, 0)
     const last = si === systemsIdx.length - 1

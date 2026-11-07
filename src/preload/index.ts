@@ -65,6 +65,7 @@ const api: AurelApi = {
     chooseFolder: () => i('export:chooseFolder'),
     writeFile: (path, data) => i('export:writeFile', path, data),
     writeAudio: (path, wav, format) => i('export:writeAudio', path, wav, format),
+    previewPdf: (id, opts) => i('export:previewPdf', id, opts),
     pdf: (id, path, opts) => i('export:pdf', id, path, opts),
     openPath: (p) => i('export:openPath', p)
   },

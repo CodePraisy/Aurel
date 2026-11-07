@@ -127,11 +127,11 @@ export async function processJob(ctx: JobCtx, projectId: string, sources?: Trans
     saveProjectFile(p)
   }
   // Songs imported before silence trimming: remove the leading gap now, so the transcription starts with the music.
-  if (project.audio.trimmed === undefined) {
+  {
     const cut = trimLeadingSilence(join(dir, project.audio.original))
     const p = loadProjectFile(projectId)
     if (p?.audio) {
-      p.audio.trimmed = cut
+      p.audio.trimmed = (p.audio.trimmed ?? 0) + cut
       if (cut > 0) {
         p.audio.duration = Math.max(0, p.audio.duration - cut)
         p.audio.offset = Math.max(0, p.audio.offset - cut)

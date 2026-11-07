@@ -696,7 +696,7 @@ class Player {
     this.segCtx0 = ctx.currentTime + lead + countSec
     this.beforeWrap = null
     // from the very start, play the recording from 0:00 and let the bar grid begin at the first downbeat
-    this.preRoll = tick === 0 && project.audio && this.opts.listen !== 'transcription' ? project.audio.offset / this.audioRate : 0
+    this.preRoll = tick === 0 && project.audio && this.opts.listen !== 'transcription' ? Math.max(0, project.audio.offset - (project.audio.startAt ?? 0)) / this.audioRate : 0
     this.segCtx0 += this.preRoll
     if (countIn) {
       const beat = beatTicks(project.score.timeSig)

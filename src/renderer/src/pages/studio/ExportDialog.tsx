@@ -30,6 +30,8 @@ export default function ExportDialog({ project, open, onClose }: { project: Proj
   const [custom, setCustom] = useState({ from: 1, to: count })
   const [who, setWho] = useState<'mix' | 'one' | 'each'>('mix')
   const [partId, setPartId] = useState(st.cursor?.partId ?? project.score.parts[0]?.id ?? '')
+  const [pdfScale, setPdfScale] = useState(0.85)
+  const [pdfSpacing, setPdfSpacing] = useState(1)
   const [fmt, setFmt] = useState<Format>('wav')
   const [audio, setAudio] = useState<ExportAudioSettings>(settings.export)
   const [useStems, setUseStems] = useState(true)
@@ -62,7 +64,10 @@ export default function ExportDialog({ project, open, onClose }: { project: Proj
     if (f === 'mid') return api.exporter.writeFile(path, scoreToMidi(project.score, { partIds: ids, ...r }))
     if (f === 'musicxml') return api.exporter.writeFile(path, scoreToMusicXml(project.score, { partIds: ids, ...r }))
     if (f === 'txt') return api.exporter.writeFile(path, ids.map((id) => parts.find((p) => p.id === id)!).filter((p) => isFretted(p.kind)).map((p) => partToAsciiTab(project.score, p, r)).join('\n\n') || 'No guitar or bass parts in this selection.')
-    if (f === 'pdf') return api.exporter.pdf(project.id, path, { partIds: ids, mode: project.view?.mode ?? 'both', ...r })
+    if (f === 'pdf') {
+      await useProject.getState().save()
+      return api.exporter.pdf(project.id, path, { partIds: ids, mode: project.view?.mode ?? 'both', ...r, scale: pdfScale, spacing: pdfSpacing })
+    }
     const wav = await renderWav(project, { partIds: ids, ...r, settings: { ...audio, normalize }, useAudioStems: useStems })
     return api.exporter.writeAudio(path, wav, f as 'wav' | 'mp3' | 'flac')
   }
@@ -171,6 +176,20 @@ export default function ExportDialog({ project, open, onClose }: { project: Proj
             </div>
           </>
         )}
+        {tab === "file" && fmt === "pdf" && <div className="card p-3 space-y-3">
+          <label className="flex gap-3 items-center">Score size <input aria-label="PDF score size" type="range" min={50} max={140} value={Math.round(pdfScale * 100)} onChange={(event) => setPdfScale(+event.target.value / 100)} /><span>{Math.round(pdfScale * 100)}%</span></label>
+          <label className="flex gap-3 items-center">Bar spacing <input aria-label="PDF bar spacing" type="range" min={70} max={150} value={Math.round(pdfSpacing * 100)} onChange={(event) => setPdfSpacing(+event.target.value / 100)} /><span>{Math.round(pdfSpacing * 100)}%</span></label>
+          <button className="btn-soft" disabled={!!busy} onClick={async () => {
+            setBusy("Preparing PDF preview…")
+            try {
+              await useProject.getState().save()
+              const unit = units()[0]
+              await api.exporter.previewPdf(project.id, { partIds: unit.ids, mode: project.view?.mode ?? "both", ...range(), scale: pdfScale, spacing: pdfSpacing })
+            } catch (error) { toast((error as Error).message, "error") }
+            finally { setBusy(null) }
+          }}>Preview PDF</button>
+          <p className="text-[12px] text-muted">Preview opens in your PDF viewer. Smaller scores and tighter bars fit more music on each page. For separate instrument exports, the preview shows the first instrument.</p>
+        </div>}
         {tab === 'daw' && (
           <div className="rounded-lg bg-fg/[0.03] border border-line p-3 text-[12.5px] text-muted leading-relaxed">
             Creates a folder with the full-mix WAV, one WAV stem and one MIDI file per instrument, a multitrack MIDI, MusicXML and a README with the tempo. Every stem has the same start and length so they align at bar 1.

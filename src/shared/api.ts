@@ -62,12 +62,13 @@ export interface AurelApi {
     chooseFolder(): Promise<string | null>
     writeFile(path: string, data: Uint8Array | string): Promise<void>
     writeAudio(path: string, wav: Uint8Array, format: 'wav' | 'mp3' | 'flac'): Promise<void>
-    pdf(projectId: string, path: string, opts: { partIds: string[] | null; mode: string; from?: number; to?: number }): Promise<void>
+    previewPdf(projectId: string, opts: { partIds: string[] | null; mode: string; from?: number; to?: number; scale?: number; spacing?: number }): Promise<void>
+    pdf(projectId: string, path: string, opts: { partIds: string[] | null; mode: string; from?: number; to?: number; scale?: number; spacing?: number }): Promise<void>
     openPath(path: string): Promise<void>
   }
   print: {
     ready(): void
-    params(): Promise<{ projectId: string; partIds: string[] | null; mode: string; from?: number; to?: number } | null>
+    params(): Promise<{ projectId: string; partIds: string[] | null; mode: string; from?: number; to?: number; scale?: number; spacing?: number } | null>
   }
   sounds: {
     status(): Promise<PackStatus[]>
