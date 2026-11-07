@@ -186,10 +186,11 @@ api.jobs.onUpdate(async (u) => {
   if ((u.kind === 'import' || u.kind === 'youtube') && result?.projectId) {
     await st.refreshLibrary()
     st.toast(result.duplicate ? 'This song is already in your library.' : 'Recording ready.', 'ok', {
-      label: 'Open recording', run: () => st.go({ name: 'studio', projectId: result.projectId! })
+      label: 'Choose instruments', run: () => st.go({ name: 'studio', projectId: result.projectId! })
     })
     if (result.duplicate) return
-    if (useApp.getState().settings?.autoProcess) void st.processProject(result.projectId)
+    const current = useApp.getState()
+    if ((current.route.name === 'home' || current.route.name === 'library') && !current.dialog) current.go({ name: 'studio', projectId: result.projectId })
   }
   if (u.kind === 'process' && info.projectId) {
     try {

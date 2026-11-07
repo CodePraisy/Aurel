@@ -159,6 +159,11 @@ export default function Studio({ projectId }: { projectId: string }) {
       next.score.tempo = tempo
     }, tempo !== s.tempo)
   }
+  const startTranscription = (sources?: TranscriptionSource[], hints?: Project["instrumentHints"]) => {
+        patchProject((next) => { next.instrumentHints = hints })
+        setTranscribeOpen(false)
+        void processProject(p.id, sources)
+      }
   const editOnRightClick = (field: RhythmField) => (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -269,7 +274,7 @@ export default function Studio({ projectId }: { projectId: string }) {
               )}
             </>
           ) : (
-            <EmptyStudio project={p} running={!!job || !!installJob} onTranscribe={() => setTranscribeOpen(true)} onEditRhythm={setRhythmField} />
+            <EmptyStudio project={p} running={!!job || !!installJob} onTranscribe={startTranscription} onEditRhythm={setRhythmField} />
           )}
           {hasParts && p.audio && <div className="shrink-0 border-t border-line px-4 py-1 bg-panel/30"><Waveform project={p} height={34} /></div>}
         </section>
@@ -293,11 +298,7 @@ export default function Studio({ projectId }: { projectId: string }) {
         })
         setTransposeTarget(null)
       }} />}
-      {transcribeOpen && <TranscriptionDialog onClose={() => setTranscribeOpen(false)} onStart={(sources, hints) => {
-        patchProject((next) => { next.instrumentHints = hints })
-        setTranscribeOpen(false)
-        void processProject(p.id, sources)
-      }} />}
+      {transcribeOpen && <TranscriptionDialog onClose={() => setTranscribeOpen(false)} onStart={startTranscription} />}
       <ExportDialog project={p} open={exportOpen} onClose={() => setExportOpen(false)} />
       <Rack />
     </div>
@@ -340,34 +341,29 @@ function RhythmEditor({ field, project, onClose, setTempo, setTimeSig }: {
   )
 }
 
-function TranscriptionDialog({ onClose, onStart }: { onClose: () => void; onStart: (sources?: TranscriptionSource[], hints?: Project["instrumentHints"]) => void }) {
+function TranscriptionDialog({ onClose, onStart, embedded = false }: { embedded?: boolean; onClose: () => void; onStart: (sources?: TranscriptionSource[], hints?: Project["instrumentHints"]) => void }) {
   const [auto, setAuto] = useState(true)
   const [selected, setSelected] = useState<TranscriptionSource[]>([])
   const [hints, setHints] = useState<NonNullable<Project["instrumentHints"]>>({})
   const choices: Partial<Record<TranscriptionSource, InstrumentKind[]>> = { guitar: ["acoustic-guitar", "clean-guitar", "distorted-guitar"], piano: ["piano", "epiano", "organ"], other: ["strings", "brass", "woodwinds", "synth", "vocals"] }
   const labels = { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano / keys', other: 'Other instruments' }
-  return (
-    <Modal open title="Transcribe recording" onClose={onClose} width={420} footer={<>
-      <button className="btn-ghost" onClick={onClose}>Cancel</button>
-      <button className="btn-primary" disabled={!auto && !selected.length} onClick={() => onStart(auto ? undefined : selected, auto ? undefined : hints)}>Start transcription</button>
-    </>}>
+  const content = (<>
       <div className="seg w-fit mb-3" role="group" aria-label="Instrument detection">
-        <button aria-pressed={auto} className={cx(auto && 'on')} onClick={() => setAuto(true)}>Detect automatically</button>
+        <button aria-pressed={auto} className={cx(auto && 'on')} onClick={() => { setAuto(true); setSelected([]); setHints({}) }}>Detect automatically</button>
         <button aria-pressed={!auto} className={cx(!auto && 'on')} onClick={() => setAuto(false)}>Choose instruments</button>
       </div>
-      {auto ? <p className="text-sm text-muted">Aurel finds the instruments in the recording and transcribes the audible tracks.</p> :
+      {auto && <p className="text-sm text-muted">Aurel finds the instruments in the recording and transcribes the audible tracks.</p>}
+      {
         <div className="grid grid-cols-2 gap-3">
-          {TRANSCRIPTION_SOURCES.map((source) => <label key={source} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={selected.includes(source)} onChange={(event) => setSelected((current) =>
-              event.target.checked ? [...current, source] : current.filter((item) => item !== source))} />{labels[source]}
-          </label>)}
+          {TRANSCRIPTION_SOURCES.map((source) => <button key={source} className={cx("btn-soft !h-10", selected.includes(source) && "!bg-accent/20 !text-accent")} aria-pressed={selected.includes(source)} onClick={() => { setAuto(false); setSelected((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source]) }}>{labels[source]}</button>)}
           {selected.filter((source) => choices[source]).map((source) => <div key={source} className="col-span-2"><div className="label mb-1">{labels[source]} sound</div><Select value={hints[source] ?? ""} onChange={(kind) => setHints({ ...hints, [source]: kind || undefined })} options={[{ value: "", label: "Let the model decide" }, ...choices[source]!.map((kind) => ({ value: kind, label: INSTRUMENTS[kind].label }))]} /></div>)}
         </div>}
-    </Modal>
-  )
+    <div className="flex justify-end mt-4">      <button className="btn-primary" disabled={!auto && !selected.length} onClick={() => onStart(auto ? undefined : selected, auto ? undefined : hints)}>Start transcription</button></div>
+  </>)
+  return embedded ? <div className="space-y-3">{content}</div> : <Modal open title="Transcribe recording" onClose={onClose} width={460}>{content}</Modal>
 }
 
-function EmptyStudio({ project, running, onTranscribe, onEditRhythm }: { project: Project; running: boolean; onTranscribe: () => void; onEditRhythm: (field: RhythmField) => void }) {
+function EmptyStudio({ project, running, onTranscribe, onEditRhythm }: { project: Project; running: boolean; onTranscribe: (sources?: TranscriptionSource[], hints?: Project["instrumentHints"]) => void; onEditRhythm: (field: RhythmField) => void }) {
   const { engine, toast } = useApp()
   const st = useProject()
   const [checkingRhythm, setCheckingRhythm] = useState(false)
@@ -393,12 +389,12 @@ function EmptyStudio({ project, running, onTranscribe, onEditRhythm }: { project
             <div className="font-display text-[30px] leading-tight mb-2">Turn this recording into sheet music & tabs</div>
             <p className="text-muted max-w-[560px] leading-relaxed mb-5">Aurel separates every instrument, then writes editable notation for each one. It runs on your computer{engine?.cuda ? ` using your ${engine.gpuName ?? 'GPU'}` : ''}; a typical song takes {engine?.cuda ? '1–2' : '3–8'} minutes.</p>
             <div className="flex items-center gap-3 flex-wrap">
-              <button className="btn-primary !h-11 !px-6 !text-[15px] pulse" disabled={checkingRhythm} onClick={onTranscribe}><Sparkles size={18} /> Transcribe this song</button>
               <button className="chip !h-7 hover:text-fg" title="Edit score tempo" onClick={() => onEditRhythm('tempo')} onContextMenu={(e) => { e.preventDefault(); onEditRhythm('tempo') }}>{rhythm ? `${Math.round(rhythm.bpm)} BPM estimated` : rhythm === null ? 'Tempo unclear' : 'Tempo not verified'}</button>
               <button className="chip !h-7 hover:text-fg" title="Edit time signature" onClick={() => onEditRhythm('meter')} onContextMenu={(e) => { e.preventDefault(); onEditRhythm('meter') }}>{rhythm?.timeSig ? `${rhythm.timeSig.num}/${rhythm.timeSig.den} estimated` : rhythm === undefined ? 'Meter not verified' : 'Meter unclear'}</button>
               <button className="btn-soft !h-7" disabled={checkingRhythm} onClick={() => void recheckRhythm()}><RefreshCw size={13} className={checkingRhythm ? 'animate-spin' : ''} /> {checkingRhythm ? 'Checking…' : 'Recheck tempo & meter'}</button>
               {!engine?.ready && <span className="text-[12px] text-faint">First run downloads the AI engine (~3–5 GB) automatically.</span>}
             </div>
+            <div className="mt-5 relative"><TranscriptionDialog embedded onClose={() => undefined} onStart={onTranscribe} /></div>
           </div>
         )}
         {project.audio && (

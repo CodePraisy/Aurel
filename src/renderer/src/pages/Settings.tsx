@@ -268,7 +268,7 @@ export default function SettingsPage({ section }: { section?: string }) {
                 <Select width={224} value={s.separationModel} onChange={(v) => set({ separationModel: v })} options={[{ value: 'htdemucs_6s', label: 'HT-Demucs 6-source' }, { value: 'htdemucs', label: 'HT-Demucs 4-source' }, { value: 'htdemucs_ft', label: 'HT-Demucs fine-tuned' }]} />
               </Row>
               <Row title="Split drums" desc="Also write approximate kick / snare / hi-hat stems (frequency-band split)."><Toggle on={s.drumSplit} onChange={(v) => set({ drumSplit: v })} /></Row>
-              <Row title="Transcribe automatically after import"><Toggle on={s.autoProcess} onChange={(v) => set({ autoProcess: v })} /></Row>
+              <p className="text-[13px] text-muted py-3">After importing, choose instruments or automatic detection, then press Start transcription.</p>
               <Row title="Custom Python (advanced)" desc="Leave empty to use Aurel’s own environment.">
                 <input className="field !w-64" placeholder={"C:\\Python310\\python.exe"} defaultValue={s.pythonPath} onBlur={(e) => { set({ pythonPath: e.target.value.trim() }); setTimeout(() => refreshEngine(true), 200) }} />
               </Row>
