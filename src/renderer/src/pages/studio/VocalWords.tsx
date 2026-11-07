@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Project } from '@shared/types'
 import { player } from '@/audio/player'
 import { measureTicks } from '@/music/theory'
-import { lyricLines, lyricTimestamp, lyricTiming, type LyricWord } from '@/music/lyrics'
-import type { ScoreLayout } from '@/notation/render'
+import { LYRIC_LINE, lyricLines, lyricTimestamp, lyricTiming, lyricWidth, placeLyrics, type LyricWord } from '@/music/lyrics'
+import { xForTick, type ScoreLayout } from '@/notation/render'
 import { useProject } from '@/store/project'
 import { useApp } from '@/store/app'
 import { cx } from '@/components/ui'
@@ -34,7 +34,7 @@ export default function VocalWords({ project, layout }: { project: Project; layo
     const active = seconds >= word.start && seconds < word.end
     return <button key={index} data-lyric-start={word.start} aria-current={active ? 'true' : undefined}
       className={cx('inline-flex flex-col items-start text-left rounded-md transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
-        large ? 'px-1.5 py-2 hover:bg-accent/10' : 'px-1.5 py-0.5 hover:bg-accent/10',
+        large ? 'px-1.5 py-2 hover:bg-accent/10' : 'px-1.5 py-0 leading-6 whitespace-nowrap hover:bg-accent/10',
         active ? 'text-accent bg-accent/10' : seconds >= word.end ? (large ? 'text-fg' : 'text-ink') : (large ? 'text-muted' : 'text-ink/60'))}
       title={`Play from ${lyricTimestamp(word.start)}`} aria-label={`${word.text.trim()}, ${lyricTimestamp(word.start)}`}
       onClick={() => player.seek(Math.max(0, timing.toTick(word.start)))}>
@@ -46,14 +46,24 @@ export default function VocalWords({ project, layout }: { project: Project; layo
     const mt = measureTicks(project.score.timeSig)
     return <div className="absolute inset-0 pointer-events-none" aria-label="Lyrics beneath the score">
       {layout.systems.map((system, index) => {
-        const start = system.measures[0].index * mt
+        const first = system.measures[0].index
+        const start = first * mt
         const end = (system.measures.at(-1)!.index + 1) * mt
-        const words = (lyrics?.words ?? []).filter((w) => timing.toTick(w.start) >= start && timing.toTick(w.start) < end)
-        return words.length ? <div key={index} className="absolute pointer-events-auto flex flex-wrap content-start items-start"
-          style={{ left: system.measures[0].x, top: system.bottom - 10,
-            width: layout.width - system.measures[0].x - 14, zoom: layout.zoom }}>
-          {words.map((word, wi) => wordButton(word, wi))}
-        </div> : null
+        const words = (lyrics?.words ?? []).map((word, wi) => ({ word, wi, tick: timing.toTick(word.start) })).filter((w) => w.tick >= start && w.tick < end)
+        if (!words.length) return null
+        // where each word is sung: on the singer's note when one starts there, else between the beats around it
+        const sung = system.rows.filter((row) => row.partId === part.id).flatMap((row) => row.events).filter((e) => !e.rest)
+        const placed = placeLyrics(words.map(({ word, tick }) => {
+          const mi = Math.min(system.measures.at(-1)!.index, Math.floor(tick / mt))
+          const inBar = tick - mi * mt
+          const note = sung.find((e) => e.measure === mi && Math.abs(e.start - inBar) <= mt / 32)
+          return { x: note ? note.x : xForTick(system, mi, inBar, mt) ?? system.measures[0].noteX, width: lyricWidth(word.text) }
+        }))
+        return <div key={index} className="absolute inset-0" style={{ zoom: layout.zoom }}>
+          {words.map(({ word, wi }, i) => <div key={wi} className="absolute pointer-events-auto lyric-word" style={{ left: placed[i].x - 6, top: system.bottom - 8 + placed[i].line * LYRIC_LINE, animationDelay: `${Math.min(i, 20) * 12}ms` }}>
+            {wordButton(word, wi)}
+          </div>)}
+        </div>
       })}
     </div>
   }

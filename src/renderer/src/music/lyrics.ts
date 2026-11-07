@@ -40,3 +40,37 @@ export function lyricRows(words: LyricWord[], width: number): number {
   }
   return rows
 }
+
+export const LYRIC_LINE = 24
+
+let measureCtx: CanvasRenderingContext2D | null = null
+/** Width of a word as drawn under the staff (14 px text plus button padding). */
+export function lyricWidth(text: string): number {
+  if (typeof document !== 'undefined') {
+    measureCtx ??= document.createElement('canvas').getContext('2d')
+    if (measureCtx) {
+      measureCtx.font = `14px ${getComputedStyle(document.body).fontFamily || 'sans-serif'}`
+      return Math.ceil(measureCtx.measureText(text.trim()).width) + 12
+    }
+  }
+  return text.trim().length * 7.6 + 12
+}
+
+/**
+ * Put each word under the beat it is sung on. A word that would run into the one before it is
+ * nudged right a little; if that would move it too far from its beat it drops to the next line
+ * instead, so every word stays close to its note.
+ */
+export function placeLyrics(items: { x: number; width: number }[], maxShift = 28, gap = 4): { x: number; line: number }[] {
+  const right: number[] = []
+  return items.map(({ x, width }) => {
+    let best: { x: number; line: number } | null = null
+    for (let line = 0; line <= right.length; line++) {
+      const pos = Math.max(x, (right[line] ?? -Infinity) + gap)
+      if (pos - x <= maxShift) { best = { x: pos, line }; break }
+      if (!best || pos < best.x) best = { x: pos, line }
+    }
+    right[best!.line] = best!.x + width
+    return best!
+  })
+}

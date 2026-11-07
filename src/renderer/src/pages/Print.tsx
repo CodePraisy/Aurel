@@ -16,7 +16,7 @@ export default function PrintView() {
       if (!params) { setMsg('Nothing to print'); return }
       const p: Project = await api.project.load(params.projectId)
       const selected = p.score.parts.filter((x) => !params.partIds || params.partIds.includes(x.id))
-      const parts = selected.filter((part) => part.kind !== "singer")
+      const parts = selected.filter((part) => part.kind !== "singer" || part.measures.some((m) => m.events.some((e) => !e.rest)))
       const score = { ...p.score, parts: parts.map((x) => ({ ...x, measures: x.measures.slice(params.from ?? 0, (params.to ?? x.measures.length - 1) + 1) })) }
       await document.fonts.ready
       const el = ref.current!

@@ -28,14 +28,14 @@ The three home-screen workflows all open the same Studio. The Studio is a notati
   - Live fretboard and keyboard display.
 - **VST3 instruments and effects, in real time.** See *Real-time plug-in audio* below.
 - **MIDI keyboards.** USB or Bluetooth (via Windows), hot-plugged. Notes sound for as long as the key or sustain pedal is held, on the part's own instrument and plug-ins. Write mode enters them at the cursor; keys pressed within 60 ms form one chord. Device and channel filters in Settings → MIDI.
-- **AI.** Demucs (`htdemucs_6s` by default) splits the recording into vocals, drums, bass, guitar, piano and other. Then:
-  - Basic Pitch turns each stem into notes.
-  - librosa finds the tempo and beats.
-  - Band-split onset detection finds drum hits.
-  - Heuristic tone classification guesses each instrument, with confidence badges.
-  - Hard-panned guitars are split into L/R parts.
-  - Notes are quantized to 16ths and turned into editable notation and tab.
-  - GPU is used when available, with CPU fallback. Processing runs in the background and can be cancelled.
+- **AI (engine 2).** Demucs splits the recording (`htdemucs_6s` when guitar or piano are wanted, the fine-tuned 4-source model otherwise; *Best* combines both). Then each part gets a model made for it:
+  - **Beats and bar lines:** Beat This! (CP JKU, ISMIR 2024) on the full mix, run through ONNX Runtime. Every note is placed on that beat grid, so a band that drifts from a click stays in time; the score gets tempo changes where the recording speeds up or slows down. Meter (3/4, 4/4, 6/8, 12/8) comes from the downbeats and how notes divide the beat; swing is detected and written straight.
+  - **Piano and guitar:** Transkun 2 (transformer + semi-CRF), then a clean-up pass: instrument range, blips, notes much quieter than their neighbours (bleed), and strummed chords pulled onto one start.
+  - **Bass and singing:** CREPE pitch tracking, cut into notes at pitch changes, silences and fresh attacks (level dips for the voice, low-band onsets for bass).
+  - **Drums:** ADTOF (kick, snare, toms, hi-hat, cymbals). Its weights are CC BY-NC-SA; *Settings → Transcription → Drum transcription → Basic* uses band filters instead.
+  - **Words:** Whisper; each word is then moved onto the sung note it belongs to.
+  - **Writing it down** (`music/beatgrid.ts`): each beat uses the simplest rhythm that explains its notes (quarter, 8ths, 16ths…), short gaps are held over, and chords share a start. These settings can be re-applied to a song without transcribing again.
+  - Missing optional models fall back to Basic Pitch, librosa beats and band-filter drums, so older installs keep working; the next Transcribe offers the ~300 MB upgrade.
 - **Export.**
   - WAV/MP3/FLAC rendered with the assigned sounds, or the isolated recordings.
   - MIDI, MusicXML (with string/fret data), PDF and ASCII tab.
@@ -49,21 +49,36 @@ The three home-screen workflows all open the same Studio. The Studio is a notati
 1. **Recorded parameter automation.** Plug-in controls can be changed live while playing, but changes are not yet recorded over time as automation lanes.
 2. **User SF2/SFZ soundfonts.** Built-in sampled instruments now ship as downloadable packs (Salamander Grand Piano, MusyngKite GM set, acoustic kit) with a per-part effects chain (EQ, compressor, reverb, delay, chorus, amp/drive, filter, utility). Loading your own soundfonts is still to do.
 3. **Guitar Pro (.gp) import/export, and MusicXML import.**
-4. **Not supported in notation:** tuplets, multiple voices per staff, repeats/voltas, lyrics, and per-measure time-signature changes.
+4. **Not supported in notation:** tuplets (triplets inside a straight beat are rounded), multiple voices per staff, repeats/voltas, and per-measure time-signature changes.
 5. **Trained classifiers.** Lead/rhythm detection and acoustic-vs-electric classification need trained models; today these are heuristics.
 
 ## Realistic transcription quality
 
 | Material | Expect |
 |---|---|
-| Bass lines, sung melodies, clear lead lines | Good first draft; mostly right pitches; rhythm right at the 16th grid |
-| Clean guitar / piano chords | Usable chord shapes with extra or missing notes, especially inner voices |
-| Distorted guitar, dense mixes, heavy reverb | Rough sketch; expect substantial correction |
-| Drums | Kick/snare/hi-hat/cymbal timing usually right; toms and ghost notes mostly missing |
-| Rhythm | One global tempo. No swing, triplets, rubato or tempo changes. The first beat is assumed to be a downbeat, so use “Align notation to recording” to shift by beats or milliseconds |
-| Tab fingerings | Chosen for playability, not detected from the recording. Techniques (bends, slides…) are never detected |
+| Bass lines, sung melodies, piano | Good first draft: most notes right, on the right beat |
+| Clean or acoustic guitar chords | Usable chords; a few extra or missing inner notes |
+| Distorted guitar, dense mixes, heavy reverb | Recognisable, still needs correcting |
+| Drums | Kick, snare and hi-hat very reliable; toms and cymbals mostly right; ghost notes often missed |
+| Rhythm | Follows the band's tempo bar by bar. Triplets inside a straight beat are rounded to 16ths |
+| Tab fingerings | Chosen for playability, not detected from the recording. Techniques (bends, slides…) are not detected |
 
-Rule of thumb: AI output is a starting point you correct, not a finished chart. That is why every AI result lands in the same editor as a composition. The isolated recording is always one click away for comparison.
+### How it was measured
+
+`tools/engine-bench` renders songs with exact ground truth (General MIDI soundfont, human timing, tempo drift, swing, 3/4 and 4/4), adds the kind of bleed and room sound a separation leaves behind (each stem carries 12–22 % of the other instruments), runs the real engine on the mix and those stems, and scores the *notation*: a note counts only if it is on exactly the right beat with exactly the right pitch.
+
+| Part | Before (engine 1) | Now (engine 2) |
+|---|---|---|
+| Guitar | 0.22 | **0.82** |
+| Bass | 0.20 | **0.80** |
+| Drums | 0.33 | **0.98** |
+| Piano | 0.08 | **0.72** |
+| Sung melody | not written | **0.77** |
+| Time signature right | 6 of 8 songs | **8 of 8** |
+
+F1 score of notes on exactly the right beat with the right pitch (1.0 = perfect), 8 songs, simulated separation bleed. Engine 1 lost most notes to tempo drift: one rounded tempo for the whole song moves later bars off the beat.
+
+Real recordings were used where annotated audio is available: on sung notes (Vocadito) CREPE note onsets scored 0.77 F1 against 0.53 for Basic Pitch. Beat This! found 97–100 % of beats in the test songs even with the drums removed.
 
 ## Real-time plug-in audio
 
@@ -83,7 +98,7 @@ Each part that uses VST3 plug-ins gets its own `aurel-vst-host.exe serve` proces
 ## Out-of-the-box setup
 
 - First launch downloads all instrument sounds (~40 MB) and the YouTube importer (yt-dlp plus the Deno runtime it needs).
-- The first Transcribe press installs the AI engine automatically: uv fetches a private Python 3.10, PyTorch (CUDA build when an NVIDIA GPU is present), Demucs and Basic Pitch.
+- The first Transcribe press installs the AI engine automatically: uv fetches a private Python 3.10, PyTorch (CUDA build when an NVIDIA GPU is present), Demucs, Basic Pitch and Whisper, then the per-instrument models (Transkun, CREPE, ADTOF, ONNX Runtime and the Beat This! model).
 - Imports detect tempo, 3/4 vs 4/4 and the first downbeat immediately (JS autocorrelation); the AI engine refines it.
 
 ## Design decisions

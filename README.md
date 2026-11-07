@@ -4,14 +4,14 @@
 
 Aurel separates a recording into instrument stems (vocals, drums, bass, guitar, piano, other) and transcribes each stem into standard notation and guitar tablature. It also gives you a synchronized practice player, a full score editor, and real-time hosting for VST3 instruments and effects on Windows. Projects, audio and AI processing all stay on your machine.
 
-## Download — v0.4.8
+## Download — v0.5.0
 
-- [`Aurel-0.4.8-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.8/Aurel-0.4.8-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
-- [`Aurel-0.4.8-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.8/Aurel-0.4.8-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
-- [`Aurel-0.4.8-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.8/Aurel-0.4.8-macOS-arm64.zip) (Mac with Apple silicon)
-- [`Aurel-0.4.8-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.8/Aurel-0.4.8-macOS-x64.zip) (Mac with an Intel processor)
+- [`Aurel-0.5.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.5.0/Aurel-0.5.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
+- [`Aurel-0.5.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.5.0/Aurel-0.5.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
+- [`Aurel-0.5.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.5.0/Aurel-0.5.0-macOS-arm64.zip) (Mac with Apple silicon)
+- [`Aurel-0.5.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.5.0/Aurel-0.5.0-macOS-x64.zip) (Mac with an Intel processor)
 
-[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.4.8)
+[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.5.0)
 
 To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: Apple M…** means Apple silicon. **Processor: Intel** means Intel.
 
@@ -25,14 +25,14 @@ To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: A
 
 ### Windows (installer)
 
-1. Download `Aurel-0.4.8-Windows-x64.exe` and run it.
+1. Download `Aurel-0.5.0-Windows-x64.exe` and run it.
 2. If Microsoft Defender SmartScreen shows **"Windows protected your PC"**, select **More info → Run anyway**. The warning appears because the build is not yet code-signed.
 3. Complete the setup wizard; the defaults are fine. During installation, the AI transcription engine is downloaded and configured (one-time, 3–5 GB), so an internet connection is required. If this step is interrupted, Aurel still installs, and you can finish later from **Settings → AI Engine**.
 4. Launch **Aurel** from the Start menu or the desktop shortcut.
 
 ### Windows (portable)
 
-Download `Aurel-0.4.8-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
+Download `Aurel-0.5.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
 
 ### macOS
 
@@ -54,7 +54,7 @@ Download `Aurel-0.4.8-Windows-x64-Portable.exe` and run it from any folder or a 
 ## Features
 
 - **Import:** MP3, WAV, FLAC, M4A, OGG and video files, by drag-and-drop or file picker. You can also import from a YouTube link, a direct URL, or a MIDI file.
-- **Transcription:** stem separation, note transcription, and tempo, meter and downbeat detection. Results are quantized into editable notation and tablature.
+- **Transcription:** separates the instruments, finds every beat and bar line, and uses a model made for each instrument (piano and guitar, bass, singing, drums). Notes are written on the band's own beat, with the simplest rhythm that fits. Choose Fast, Balanced or Best, and how many notes to keep, in **Settings → Transcription**.
 - **Practice:** speed from 25% to 200% with pitch preserved, saved loops, a gradual tempo trainer, metronome and count-in, transposition, a follow-along cursor, and an **Original / Transcription** playback switch.
 - **Notation editor:** multi-part scores, tab, drum step grid, chords with adjustable arpeggio direction and spacing, articulations and techniques, alternate tunings and capo, and 200-step undo. Enter notes with the keyboard, the mouse, an on-screen piano or fretboard, or a USB MIDI keyboard.
 - **Sound:** sampled instruments with a per-part effects chain. You can add instruments made from your own samples and use them in any part, or in place of a built-in sound. On Windows, installed VST3 instruments and effects (for example Kontakt or Guitar Rig) run in real time with their native editors.
@@ -62,10 +62,24 @@ Download `Aurel-0.4.8-Windows-x64-Portable.exe` and run it from any folder or a 
 - **Sessions:** every piece you open stays in the sidebar, so you can switch between transcriptions and compositions. Drag them to reorder or into folders.
 - **Editing:** drag notes to move them (up or down changes pitch, Ctrl copies). Delete either leaves a rest or shifts the following notes back. Type the number of bars; Aurel warns before removing bars that have notes. Tap tempo.
 - **Looping:** loop the whole piece, the selected bars, or typed bar numbers, and save named sections like "Chorus".
-- **Interface:** Dark, Light and Sakura themes, with floating notes in the background (adjustable in **Settings → Appearance**).
+- **Interface:** Dark, Light and Sakura themes, with floating notes in the background (amount, speed and size in **Settings → Appearance**). Settings has a search box (**Ctrl+F**) that shows where each setting lives.
 - **Updates:** Aurel checks for a new release at startup and asks before installing. To check manually or turn off automatic checks, open **Settings → About & limits**.
 
 ---
+
+## What’s new in v0.5.0
+
+A rebuilt transcription engine.
+
+- **Beat and bar lines** come from Beat This! (ISMIR 2024) running on the whole mix. Notes are placed on the band's own beat, so the score keeps time when the band speeds up or slows down; tempo changes are written where needed. 3/4, 4/4, 6/8 and 12/8 are detected, and swing is written as straight eighths.
+- **A model for each instrument:** Transkun for piano and guitar, CREPE for bass and singing, ADTOF for drums (kick, snare, toms, hi-hat, cymbals). Strummed chords become one chord, and bleed from other instruments is filtered out.
+- **Rhythm that reads like a person wrote it:** each beat uses the simplest rhythm that fits what was played, and tiny rests between notes are held over.
+- **Lyrics line up with the music:** each word is moved onto the note it is sung on and drawn under that beat. Turn on **Write the singer’s melody** to get the vocal line as notes, with the words under it.
+- **Settings → Transcription:** quality (Fast, Balanced, Best), a note sensitivity slider, rhythm detail, tempo mode, chord size, drum model and the lyrics model and language. **Apply** rewrites an open song with new settings without transcribing again.
+- **Settings search** with the page each setting is on, plus new appearance options. A step-by-step progress panel shows what the engine is doing.
+- On our benchmark (songs with exact ground truth and simulated separation bleed), the share of notes written on exactly the right beat with the right pitch (F1) went from 0.22 to 0.82 for guitar, 0.20 to 0.80 for bass, 0.33 to 0.98 for drums and 0.08 to 0.72 for piano, and the sung melody scores 0.77. Details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+Existing installs add the new models (about 300 MB) the next time you press Transcribe.
 
 ## What’s new in v0.4.8
 
@@ -130,19 +144,25 @@ On Windows, opening a VST3 effect editor from Studio keeps playback running and 
 
 ### Transcription
 
-Demucs first separates the recording into vocals, drums, bass and music, or six sources when configured. The Singer track uses Whisper for words; instrument tracks use Basic Pitch for notation. The vocal stem is then cleaned so it holds only the singers: what is left of the band is filtered out, and passages without singing are silent. Basic Pitch turns the instrumental parts into notes. Tempo, time signature and the first beat are detected, and the notes are lined up to a 16th-note grid as editable notation and tab. Aurel uses an NVIDIA graphics card when one is available, otherwise the processor.
+1. **Separation.** Demucs splits the recording into vocals, drums, bass and the rest, or six sources (adding guitar and piano) when you ask for those. **Best** quality runs both and keeps the cleanest of each.
+2. **Beats.** Beat This! finds every beat and downbeat in the full mix, even in songs without drums. The meter (3/4, 4/4, 6/8, 12/8), the tempo of every bar and any swing come from it.
+3. **Notes.** Transkun (piano and guitar), CREPE (bass and singing) and ADTOF (drums) each handle the part they are best at. A clean-up pass removes notes outside the instrument's range, blips, and quiet bleed from other instruments, and pulls each strummed chord onto one start.
+4. **Words.** Whisper recognises the singer's words, and each word is moved onto the sung note it belongs to.
+5. **Notation.** Every note is placed on the beat grid. Each beat gets the simplest rhythm that explains it, short gaps are held over, and the score gets a tempo change wherever the band drifts, so it stays in sync with the recording.
+
+Everything runs on your computer, on an NVIDIA graphics card when there is one.
 
 What to expect:
 
 | Material | Result |
 |---|---|
-| Bass lines, sung melodies, clear lead lines | A good first draft |
-| Clean guitar or piano chords | Usable chords, with some extra or missing notes |
-| Distorted guitar, dense mixes, heavy reverb | A rough sketch to correct |
-| Drums | Kick, snare, hi-hat and cymbal timing is usually right; toms and ghost notes are often missed |
-| Rhythm | One tempo per song; swing, triplets and tempo changes are not detected |
+| Bass lines, sung melodies, piano | A good first draft: most notes right, on the right beat |
+| Clean or acoustic guitar chords | Usable chords, with a few extra or missing inner notes |
+| Distorted guitar, dense mixes, heavy reverb | Recognisable, still needs correcting |
+| Drums | Kick, snare and hi-hat very reliable; toms and cymbals mostly right; ghost notes often missed |
+| Rhythm | Follows the band's tempo bar by bar; triplets inside a straight beat are rounded to 16ths |
 
-The AI engine can be installed ahead of time in **Settings → AI Engine**.
+**Settings → Transcription** sets the quality, how many notes to keep, rhythm detail, the tempo mode, the drum model and the lyrics model and language. The ADTOF drum model is licensed for non-commercial use; **Basic** drums use band filters instead. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how quality was measured.
 
 ### VST3 instruments and effects (Windows)
 
@@ -167,7 +187,9 @@ In **Settings → Instrument sounds → Your instruments**, choose one or more a
 - **MIDI:** input device, channel, which part the keyboard plays, and Write notes or Play only.
 - **Plug-ins:** search folders, rescan, turn plug-ins on or off, and a list of failed plug-ins.
 - **Playback:** count-in, metronome volume, solo follows track selection, and whether reverb and delay ring out after you stop.
+- **Transcription:** quality, note sensitivity, rhythm detail, tempo mode, notes per guitar chord, drum model, singer's words and melody, and **Apply** to rewrite an open song.
 - **About & limits:** installed version, automatic update checks and **Check now**.
+- **Search:** press **Ctrl+F** (or **/**) in Settings and type; each result shows which page it is on.
 
 ### YouTube import
 
@@ -219,7 +241,8 @@ To rebuild the VST3 helper (`build/vst-host/aurel-vst-host.exe`), run `powershel
 | `src/renderer/src/notation` | VexFlow engraving (staff, tab, percussion) |
 | `src/renderer/src/audio` | Built-in instruments, synced transport, real-time VST3 streaming (AudioWorklet), MIDI input, offline render |
 | `native/vst-host` | C++ VST3 host: one real-time process per part, plus the plug-in editor window |
-| `engine/aurel_engine.py` | Demucs separation, Basic Pitch transcription, drum and tempo analysis |
+| `engine/aurel_engine.py` | Separation, beat grid, per-instrument transcription (Transkun, CREPE, ADTOF, Basic Pitch), words |
+| `tools/engine-bench` | Generates songs with exact ground truth and scores the engine's notation |
 
 ### How it works
 

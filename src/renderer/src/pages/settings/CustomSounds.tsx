@@ -114,7 +114,7 @@ export default function CustomSounds() {
     <section className="mt-5">
       <div className="flex items-end justify-between gap-4 mb-2">
         <div>
-          <h3 className="font-display text-[19px]">Your instruments</h3>
+          <h3 data-setting="customSounds" className="font-display text-[19px]">Your instruments</h3>
           <p className="text-muted text-[12.5px] mt-1 leading-relaxed max-w-[520px]">Make an instrument from your own recordings. One sample is enough, and more samples across the range sound more natural. Name files by their note (for example <span className="kbd">Piano C4.wav</span>) and Aurel sets the root notes for you. Use it in any part, or swap it in for a built-in sound everywhere.</p>
         </div>
         <button className="btn-primary shrink-0" disabled={busy} onClick={() => void add()}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add samples…</button>
@@ -142,7 +142,7 @@ export default function CustomSounds() {
         </div>)}
         {!list.length && !vst.length && <p className="text-faint text-[12.5px] text-center border border-dashed border-line rounded-xl p-5">No instruments of your own yet.</p>}
       </div>
-      <button className="btn-soft mt-3" onClick={() => setAddingVst(true)}><Plus size={14} /> Import installed VST3 instrument…</button>
+      <button data-setting="vstInstruments" className="btn-soft mt-3" onClick={() => setAddingVst(true)}><Plus size={14} /> Import installed VST3 instrument…</button>
       {addingVst && <Modal open title="Import VST3 instrument" onClose={() => setAddingVst(false)} width={430}>
         <VstPicker kind="instrument" onPick={(configuration) => {
           setEditingVst({ id: uid('vi'), name: configuration.plugin.name, kind: 'synth', configuration })

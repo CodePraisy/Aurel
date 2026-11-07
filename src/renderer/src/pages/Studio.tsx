@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, Sparkles, ZoomIn, ZoomOut, PanelBottom, Loader2, Check, AlertTriangle, Star, RefreshCw } from 'lucide-react'
-import { TRANSCRIPTION_SOURCES, type InstrumentKind, type Project, type TranscriptionSource } from '@shared/types'
+import { TRANSCRIPTION_SOURCES, type InstrumentKind, type Part, type Project, type TranscriptionSource } from '@shared/types'
 import { applyRhythmEstimate, detectedBpm } from '@shared/rhythm'
 import { useApp, pendingProcess } from '@/store/app'
 import Rack from './studio/Rack'
@@ -12,7 +12,8 @@ import { openContextMenu, Select } from '@/components/menu'
 import { Artwork, cx, Modal, Progress, Popover, fmtTime } from '@/components/ui'
 import { KEY_NAMES, measureTicks, INSTRUMENTS } from '@/music/theory'
 import { rebar, measureCount, transposePart } from '@/music/score'
-import ScoreView from './studio/ScoreView'
+import ScoreView, { hasNotes } from './studio/ScoreView'
+import { QuickTranscribeSettings } from './settings/TranscriptionSection'
 import PartsPanel, { familyIcon } from './studio/PartsPanel'
 import Toolbar from './studio/Toolbar'
 import Transport, { toggleLoop, usePlayer } from './studio/Transport'
@@ -129,9 +130,10 @@ export default function Studio({ projectId }: { projectId: string }) {
   const zoom = p.view?.zoom ?? 1
   const loop = player.opts.loopOn ? player.opts.loop : null
   const hasParts = s.parts.length > 0
-  const singerView = s.parts.some((part) => part.kind === "singer") && (s.parts.every((part) => part.kind === "singer") || s.parts.find((part) => part.id === p.view?.part)?.kind === "singer")
+  const wordsOnly = (part: Part) => part.kind === 'singer' && !hasNotes(part)
+  const singerView = s.parts.some(wordsOnly) && (s.parts.every(wordsOnly) || s.parts.some((part) => part.id === p.view?.part && wordsOnly(part)))
   const hasSinger = s.parts.some((part) => part.kind === 'singer')
-  const hasNotation = s.parts.some((part) => part.kind !== 'singer')
+  const hasNotation = s.parts.some((part) => !wordsOnly(part))
   const lyricsMode = hasSinger && (!hasNotation || (p.view?.lyricsMode ?? singerView))
   const sheetProject = singerView ? { ...p, view: { mode, zoom, ...p.view, part: 'all' } } : p
   const editArpeggio = (partId: string, eventId: string) => setRollTarget({ partId, eventId })
@@ -286,7 +288,7 @@ export default function Studio({ projectId }: { projectId: string }) {
               )}
             </>
           ) : !hasParts ? (
-            <EmptyStudio project={p} running={!!job || !!installJob} onTranscribe={startTranscription} onEditRhythm={setRhythmField} />
+            <EmptyStudio project={p} running={!!job || !!installJob} stage={job?.stage ?? (installJob ? 'Installing' : undefined)} pct={(job ?? installJob)?.pct} onTranscribe={startTranscription} onEditRhythm={setRhythmField} />
           ) : null}
           {hasParts && lyricsMode && <VocalWords project={p} />}
           {hasParts && p.audio && <div className="shrink-0 border-t border-line px-4 py-1 bg-panel/30"><Waveform project={p} height={34} /></div>}
@@ -371,12 +373,13 @@ function TranscriptionDialog({ onClose, onStart, embedded = false }: { embedded?
           {TRANSCRIPTION_SOURCES.map((source) => <button key={source} className={cx("btn-soft !h-10", selected.includes(source) && "!bg-accent/20 !text-accent")} aria-pressed={selected.includes(source)} onClick={() => { setAuto(false); setSelected((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source]) }}>{labels[source]}</button>)}
           {selected.filter((source) => choices[source]).map((source) => <div key={source} className="col-span-2"><div className="label mb-1">{labels[source]} sound</div><Select value={hints[source] ?? ""} onChange={(kind) => setHints({ ...hints, [source]: kind || undefined })} options={[{ value: "", label: "Let the model decide" }, ...choices[source]!.map((kind) => ({ value: kind, label: INSTRUMENTS[kind].label }))]} /></div>)}
         </div>}
-    <div className="flex justify-end mt-4">      <button className="btn-primary" disabled={!auto && !selected.length} onClick={() => onStart(auto ? undefined : selected, auto ? undefined : hints)}>Start transcription</button></div>
+    <div className="mt-4"><QuickTranscribeSettings /></div>
+    <div className="flex justify-end mt-4"><button className="btn-primary" disabled={!auto && !selected.length} onClick={() => onStart(auto ? undefined : selected, auto ? undefined : hints)}>Start transcription</button></div>
   </>)
-  return embedded ? <div className="space-y-3">{content}</div> : <Modal open title="Transcribe recording" onClose={onClose} width={460}>{content}</Modal>
+  return embedded ? <div className="space-y-3">{content}</div> : <Modal open title="Transcribe recording" onClose={onClose} width={520}>{content}</Modal>
 }
 
-function EmptyStudio({ project, running, onTranscribe, onEditRhythm }: { project: Project; running: boolean; onTranscribe: (sources?: TranscriptionSource[], hints?: Project["instrumentHints"]) => void; onEditRhythm: (field: RhythmField) => void }) {
+function EmptyStudio({ project, running, stage, pct, onTranscribe, onEditRhythm }: { project: Project; running: boolean; stage?: string; pct?: number; onTranscribe: (sources?: TranscriptionSource[], hints?: Project["instrumentHints"]) => void; onEditRhythm: (field: RhythmField) => void }) {
   const { engine, toast } = useApp()
   const st = useProject()
   const [checkingRhythm, setCheckingRhythm] = useState(false)
@@ -420,7 +423,7 @@ function EmptyStudio({ project, running, onTranscribe, onEditRhythm }: { project
           </div>
         )}
         {running ? (
-          <div className="text-center text-muted py-8">Working on it. You can keep using Aurel while this runs.</div>
+          <TranscribeSteps stage={stage} pct={pct} />
         ) : (
           <div className="card p-6">
             <div className="font-display text-[19px] mb-1">{project.audio ? 'Or write along yourself' : 'Add an instrument'}</div>
@@ -465,6 +468,40 @@ export function TapTempo({ onTempo }: { onTempo: (bpm: number) => void }) {
         <span className="relative">Tap tempo</span>
       </button>
       <span className="w-24 text-[12px] text-muted tabular-nums">{bpm ? `${bpm} BPM` : count ? 'keep tapping…' : 'tap the beat'}</span>
+    </div>
+  )
+}
+
+const STEPS: { label: string; detail: string; match: RegExp }[] = [
+  { label: 'Separate', detail: 'Split the recording into instruments', match: /install|separat|loading separation|reading/i },
+  { label: 'Beat', detail: 'Find every beat and bar line', match: /beat|isolating/i },
+  { label: 'Notes', detail: 'A model for each instrument writes its notes', match: /transcribing(?!.*words)|melody|drums/i },
+  { label: 'Words', detail: 'Recognise what the singer sings', match: /words/i },
+  { label: 'Score', detail: 'Place everything on the beat and engrave it', match: /placing|writing|result/i }
+]
+
+/** What the engine is doing right now, as a row of steps. */
+function TranscribeSteps({ stage, pct }: { stage?: string; pct?: number }) {
+  const at = Math.max(0, STEPS.findIndex((s) => s.match.test(stage ?? '')))
+  return (
+    <div className="card p-6 transcribe-steps animate-fadein">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="eq" aria-hidden="true"><span /><span /><span /><span /><span /></div>
+        <div className="flex-1 min-w-0">
+          <div className="font-display text-[19px]">Transcribing</div>
+          <div className="text-[12.5px] text-muted truncate">{stage ?? 'Starting'}{pct !== undefined && pct >= 0 ? ` · ${Math.floor(pct * 100)}%` : ''}</div>
+        </div>
+      </div>
+      <ol className="grid grid-cols-5 gap-2">
+        {STEPS.map((s, i) => (
+          <li key={s.label} className={cx('step', i < at && 'done', i === at && 'now')} style={{ animationDelay: `${i * 60}ms` }}>
+            <div className="step-bar"><span /></div>
+            <div className="text-[12.5px] font-medium mt-2 flex items-center gap-1.5">{i < at ? <Check size={12} className="text-ok" /> : <span className="step-dot" />}{s.label}</div>
+            <div className="text-[11px] text-faint leading-snug mt-0.5">{s.detail}</div>
+          </li>
+        ))}
+      </ol>
+      <p className="text-[12px] text-faint mt-5">You can keep using Aurel while this runs.</p>
     </div>
   )
 }

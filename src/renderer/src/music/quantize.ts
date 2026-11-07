@@ -2,6 +2,15 @@ import type { EngineAnalysis, InstrumentKind, Measure, NoteEvent, Part, Score } 
 import { PPQ } from '@shared/types'
 import { DRUM_PIECES, KEY_NAMES, MINOR_KEY_NAMES, measureTicks } from './theory'
 import { defaultPart, emptyMeasure, normalizeMeasure, pianoParts, uid } from './score'
+import { DEFAULT_RHYTHM, beatFrame, quantizeOnGrid, tempoPlan, type LineMode, type RhythmOptions } from './beatgrid'
+
+export interface TranscribeOptions {
+  rhythm: RhythmOptions
+  followTempo: boolean
+  vocalMelody: boolean
+  guitarChordLimit: number
+}
+export const DEFAULT_TRANSCRIBE: TranscribeOptions = { rhythm: DEFAULT_RHYTHM, followTempo: true, vocalMelody: false, guitarChordLimit: 6 }
 
 export interface RawNote { s: number; e: number; p: number; v: number }
 
@@ -109,7 +118,9 @@ export function detectKey(notes: { p: number; dur: number }[]): { fifths: number
 const MODE_FOR: Partial<Record<InstrumentKind, QuantizeOpts['mode']>> = { vocals: 'melody', singer: 'melody', bass: 'bass', brass: 'melody', woodwinds: 'melody' }
 const POLY_FOR: Partial<Record<InstrumentKind, number>> = { 'acoustic-guitar': 6, 'clean-guitar': 6, 'distorted-guitar': 4, piano: 10, epiano: 10, organ: 8, synth: 6, strings: 6 }
 
-export function analysisToScore(a: EngineAnalysis, title: string, composer: string, ts = { num: 4, den: 4 }, grid?: { tempo: number; offset: number }, pianoGrandStaff = true): { score: Score; offset: number; key: string } {
+export function analysisToScore(a: EngineAnalysis, title: string, composer: string, ts = { num: 4, den: 4 }, grid?: { tempo: number; offset: number }, pianoGrandStaff = true, opts: TranscribeOptions = DEFAULT_TRANSCRIBE): { score: Score; offset: number; key: string } {
+  // Engine 2 places every note on the detected beat grid; use that unless the user set their own tempo grid.
+  if (a.grid && a.grid.times.length > a.grid.meter && !grid) return beatGridScore(a, title, composer, pianoGrandStaff, opts)
   const tempo = grid?.tempo ?? (Math.round(a.tempo) || 120)
   const mt = measureTicks(ts)
   const measureSec = (mt / PPQ) * (60 / tempo)
@@ -191,4 +202,64 @@ function baseLabel(name: string, kind: InstrumentKind): string {
   if (kind === 'acoustic-guitar') return 'Acoustic Guitar'
   if (kind === 'clean-guitar') return 'Clean Guitar'
   return map[name] ?? name
+}
+
+// ---------- engine 2: notes placed by beat ----------
+function beatGridScore(a: EngineAnalysis, title: string, composer: string, pianoGrandStaff: boolean, opts: TranscribeOptions): { score: Score; offset: number; key: string } {
+  const g = a.grid!
+  const ts = g.timeSig ?? a.timeSig ?? { num: g.meter, den: 4 }
+  const mt = measureTicks(ts)
+  const { beatTicks } = beatFrame(g, opts.rhythm.detail)
+  const { tempo, changes } = tempoPlan(g, beatTicks, opts.followTempo)
+  const bars = Math.max(1, Math.floor((g.times.length - 1) / g.meter))
+  const beatsOf = (n: { s: number; e: number; p: number; v: number; b?: number; be?: number }) => ({ b: n.b ?? 0, be: n.be ?? n.b ?? 0, p: n.p, v: n.v })
+  const lines = (notes: Parameters<typeof beatsOf>[0][], mode: LineMode, maxPoly = 8) =>
+    onsetsToMeasures(quantizeOnGrid(notes.filter((n) => n.b !== undefined).map(beatsOf), g, opts.rhythm, mode, maxPoly), ts, bars, mode === 'drums')
+  const pitched = a.stems.filter((s) => s.kind !== 'drums' && s.name !== 'vocals')
+  const key = detectKey(pitched.flatMap((s) => (a.notes[s.name] ?? []).map((n) => ({ p: n.p, dur: n.e - n.s }))))
+  const parts: Part[] = []
+  for (const stem of a.stems) {
+    const singer = stem.name === 'vocals'
+    const kind = singer ? 'singer' : stem.kind
+    const cls = { label: kind, confidence: stem.confidence, traits: { ...stem.traits, ...(a.methods?.[stem.name] ? { model: a.methods[stem.name] } : {}) } }
+    if (stem.kind === 'drums') {
+      const piece = (id: string) => DRUM_PIECES.find((p) => p.id === id)?.midi ?? 38
+      const p = defaultPart('drums', 0, mt, 'Drums')
+      p.measures = lines((a.drums ?? []).map((h) => ({ s: h.t, e: h.t + 0.1, p: piece(h.piece), v: h.v, b: h.b, be: h.b })), 'drums', 4)
+      Object.assign(p, { stem: stem.file, playback: 'audio', classification: { ...cls, traits: { ...cls.traits, ...(a.methods?.drums ? { model: a.methods.drums } : {}) } } })
+      parts.push(p)
+      continue
+    }
+    const notes = a.notes[stem.name] ?? []
+    const isKeys = stem.kind === 'piano' || stem.kind === 'epiano' || stem.kind === 'organ'
+    const label = stemLabel(stem.name, stem.kind)
+    if (isKeys && pianoGrandStaff) {
+      const [rh, lh] = pianoParts(0, mt, stem.kind, label)
+      rh.measures = lines(notes.filter((n) => n.p >= 60), 'poly', 5)
+      lh.measures = lines(notes.filter((n) => n.p < 60), 'poly', 5)
+      Object.assign(rh, { stem: stem.file, playback: 'audio', classification: cls })
+      Object.assign(lh, { classification: cls })
+      parts.push(rh, lh)
+      continue
+    }
+    const p = defaultPart(kind, 0, mt, singer ? 'Singer' : label)
+    if (singer) {
+      p.lyrics = a.lyrics?.[stem.name] ?? { language: '', words: [], text: '' }
+      p.measures = opts.vocalMelody && notes.length ? lines(notes, 'melody') : Array.from({ length: bars }, () => emptyMeasure(mt))
+      Object.assign(p, { stem: stem.file, playback: 'audio', classification: cls })
+      parts.push(p)
+      continue
+    }
+    const guitar = stem.kind.includes('guitar')
+    p.measures = lines(notes, MODE_FOR[kind] ?? 'poly', guitar ? opts.guitarChordLimit : POLY_FOR[stem.kind] ?? 6)
+    Object.assign(p, { stem: stem.file, playback: 'audio', classification: cls })
+    parts.push(p)
+  }
+  const count = Math.max(1, ...parts.map((p) => p.measures.length))
+  for (const p of parts) while (p.measures.length < count) p.measures.push(emptyMeasure(mt))
+  // the singer goes last, so the words printed under each system sit right under the vocal staff
+  parts.sort((x, y) => Number(x.kind === 'singer') - Number(y.kind === 'singer'))
+  const score: Score = { title, composer, tempo, timeSig: ts, keyFifths: key.fifths, parts }
+  if (changes.length) score.tempoChanges = changes
+  return { score, offset: +g.times[0].toFixed(4), key: key.name }
 }

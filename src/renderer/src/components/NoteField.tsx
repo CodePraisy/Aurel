@@ -57,11 +57,14 @@ function spawn(w: number, h: number, anywhere: boolean): Particle {
  * Notes, rests and accidentals drifting up the background. Drawn on one canvas;
  * `count` sets how many. Slows to 30 fps when it is behind other pages and stops in hidden windows.
  */
-export const NoteField = memo(function NoteField({ count, dim, theme, accent, still }: { count: number; dim: boolean; theme: string; accent: string; still: boolean }) {
+export const NoteField = memo(function NoteField({ count, dim, theme, accent, still, speed = 1, scale = 1 }: { count: number; dim: boolean; theme: string; accent: string; still: boolean; speed?: number; scale?: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const state = useRef<{ particles: Particle[]; dim: boolean }>({ particles: [], dim })
   state.current.dim = dim
 
+  // speed and size change live, without re-seeding the notes
+  const motion = useRef({ speed, scale })
+  motion.current = { speed, scale }
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
@@ -89,7 +92,7 @@ export const NoteField = memo(function NoteField({ count, dim, theme, accent, st
         g.globalAlpha = p.alpha * Math.max(0, fade)
         g.setTransform(dpr, 0, 0, dpr, x * dpr, p.y * dpr)
         g.rotate(p.turn + Math.sin(t * p.spin + p.phase) * 0.35)
-        const s = p.size / 28
+        const s = (p.size / 28) * motion.current.scale
         g.drawImage(art[p.accent ? 0 : 1][p.kind], -12 * s, -14 * s, 24 * s, 28 * s)
       }
       g.globalAlpha = 1
@@ -103,7 +106,7 @@ export const NoteField = memo(function NoteField({ count, dim, theme, accent, st
       t += dt
       for (let i = 0; i < list.length; i++) {
         const p = list[i]
-        p.y -= p.speed * dt
+        p.y -= p.speed * dt * motion.current.speed
         if (p.y < -p.size * 2) list[i] = spawn(w, h, false)
       }
       draw()

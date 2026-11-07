@@ -37,11 +37,13 @@ async function checkPython(py: Py): Promise<EngineStatus> {
   try {
     if (r.code !== 0) throw new Error()
     const j = JSON.parse(r.out.trim().split('\n').pop()!)
-    const missing = Object.entries(j.packages).filter(([, version]) => !version).map(([name]) => name)
+    const optional = new Set(['transkun', 'onnxruntime', 'torchcrepe', 'adtof-pytorch'])
+    const missing = Object.entries(j.packages).filter(([name, version]) => !version && !optional.has(name)).map(([name]) => name)
     return {
       python: { found: true, path: py.cmd, version: j.python },
       packages: j.packages, cuda: !!j.cuda, gpuName: j.gpu ?? undefined,
       ready: !!j.ready,
+      upgraded: !!j.upgraded && fs.existsSync(beatModelPath()),
       message: j.ready ? undefined : missing.length ? `Missing packages: ${missing.join(', ')}` : r.err.trim().split('\n').pop()
     }
   } catch {
@@ -74,6 +76,7 @@ export async function installEngineJob(ctx: JobCtx): Promise<EngineStatus> {
     if (shared.ready) return shared
   }
   let status = fs.existsSync(py.cmd) ? await checkPython(py) : undefined
+  const upgrading = !!status?.ready && !status.upgraded
   const run = async (cmd: string, args: string[], stage: string, env: NodeJS.ProcessEnv) => {
     ctx.progress(stage, -1)
     const r = await ctx.run(cmd, args, { env, onLine: (line) => {
@@ -82,7 +85,7 @@ export async function installEngineJob(ctx: JobCtx): Promise<EngineStatus> {
     } })
     if (r.code !== 0) throw new Error(`${stage} failed. ${r.err.split('\n').filter(Boolean).slice(-2).join(' ')}`)
   }
-  if (!status?.ready) {
+  if (!status?.ready || !status.upgraded) {
     const uv = await installUv(ctx)
     const env = uvEnv()
     if (!status?.python.found) {
@@ -90,9 +93,22 @@ export async function installEngineJob(ctx: JobCtx): Promise<EngineStatus> {
       await run(uv, ['venv', '--allow-existing', '--python', '3.10', paths.venv], 'Creating AI environment', env)
     }
     const hasNvidia = (await tryRun('nvidia-smi', ['-L'])).code === 0
-    await run(uv, ['pip', 'install', '--python', py.cmd, 'torch==2.5.1', 'torchaudio==2.5.1', '--index-url', hasNvidia ? 'https://download.pytorch.org/whl/cu121' : 'https://download.pytorch.org/whl/cpu'],
-      hasNvidia ? 'Installing PyTorch with GPU support (~2.5 GB)' : 'Installing PyTorch (CPU)', env)
-    await run(uv, ['pip', 'install', '--python', py.cmd, '-r', join(paths.engineScript, '..', 'requirements.txt')], 'Installing separation and transcription packages', env)
+    if (!upgrading) {
+      await run(uv, ['pip', 'install', '--python', py.cmd, 'torch==2.5.1', 'torchaudio==2.5.1', '--index-url', hasNvidia ? 'https://download.pytorch.org/whl/cu121' : 'https://download.pytorch.org/whl/cpu'],
+        hasNvidia ? 'Installing PyTorch with GPU support (~2.5 GB)' : 'Installing PyTorch (CPU)', env)
+    }
+    if (!upgrading) {
+      await run(uv, ['pip', 'install', '--python', py.cmd, '-r', join(paths.engineScript, '..', 'requirements.txt')], 'Installing separation and transcription packages', env)
+    }
+    // the per-instrument models are an upgrade: if one fails to install, transcription still works with the older ones
+    try {
+      await run(uv, ['pip', 'install', '--python', py.cmd, '-r', join(paths.engineScript, '..', 'requirements-models.txt')], 'Adding the per-instrument transcription models', env)
+    } catch (e) { ctx.log(`Some transcription models could not be installed: ${(e as Error).message}`) }
+    if (!fs.existsSync(beatModelPath())) {
+      try {
+        await run(py.cmd, [paths.engineScript, 'prepare-beats', '--dir', join(paths.engineRoot, 'models', 'beats')], 'Downloading the beat and bar model', { ...process.env, PYTHONIOENCODING: 'utf-8' })
+      } catch (e) { ctx.log(`The beat model could not be downloaded: ${(e as Error).message}`) }
+    }
     ctx.progress('Verifying the AI engine', -1)
     status = await checkPython(py)
   }
@@ -105,9 +121,14 @@ export async function installEngineJob(ctx: JobCtx): Promise<EngineStatus> {
     })
     writeAtomic(marker, model)
   }
-  await run(py.cmd, [paths.engineScript, "prepare-words", "--models-dir", join(root, "models", "whisper")], "Preparing the Whisper word transcription model", { ...process.env, PYTHONIOENCODING: "utf-8" })
+  await run(py.cmd, [paths.engineScript, "prepare-words", "--models-dir", join(root, "models", "whisper"), "--words-model", getSettings().lyricsModel ?? "base"], "Preparing the Whisper word transcription model", { ...process.env, PYTHONIOENCODING: "utf-8" })
   cached = null
   return status
+}
+
+/** Beat This! model, downloaded next to the other engine models. */
+function beatModelPath(): string {
+  return join(paths.engineRoot, 'models', 'beats', 'beat_this.onnx')
 }
 
 let gpuInUse = false
@@ -119,7 +140,8 @@ export async function processJob(ctx: JobCtx, projectId: string, sources?: Trans
   const project = loadProjectFile(projectId)
   if (!project?.audio) throw new Error('This project has no audio to process.')
   const s = getSettings()
-  const model = sources?.some((source) => source === 'guitar' || source === 'piano') ? 'htdemucs_6s' : s.separationModel
+  // automatic detection needs the 6-source split, or guitar and piano would end up in "other"
+  const model = !sources?.length || sources.some((source) => source === 'guitar' || source === 'piano') ? 'htdemucs_6s' : s.separationModel
   const dir = paths.project(projectId)
   const setStatus = (status: NonNullable<typeof project.analysis>['status'], error?: string) => {
     const p = loadProjectFile(projectId)
@@ -156,6 +178,13 @@ export async function processJob(ctx: JobCtx, projectId: string, sources?: Trans
       '--out', dir,
       '--model', model,
       '--models-dir', join(paths.engineRoot, 'models', 'whisper'),
+      '--beat-model', beatModelPath(),
+      '--quality', s.transcribeQuality ?? 'balanced',
+      '--sensitivity', String(s.noteSensitivity ?? 0.5),
+      '--drum-model', s.drumModel ?? 'adtof',
+      '--words', s.lyricWords === false ? '0' : '1',
+      '--words-model', s.lyricsModel ?? 'base',
+      ...(s.lyricsLanguage ? ['--language', s.lyricsLanguage] : []),
       ...(sources?.length ? ['--sources', ...sources] : []),
       '--device', device,
       ...(s.drumSplit ? ['--drums'] : [])

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Palette, Volume2, Cpu, Download, Upload, Keyboard, Info, RefreshCw, Check, Loader2, Speaker, PenLine, Music, Scale, Plug, KeyboardMusic, SlidersHorizontal } from 'lucide-react'
+import { Palette, Volume2, Cpu, Download, Upload, Keyboard, Info, RefreshCw, Check, Loader2, Speaker, PenLine, Music, Scale, Plug, KeyboardMusic, SlidersHorizontal, AudioLines } from 'lucide-react'
 import { packFor, SOUND_PACKS, type PackStatus } from '@shared/sounds'
 import type { Settings, UpdateInfo } from '@shared/types'
 import { MusicMark } from '@/components/MusicScene'
@@ -13,6 +13,8 @@ import { usePlayer } from './studio/Transport'
 import EffectsSettings from './studio/EffectsSettings'
 import CustomSounds from './settings/CustomSounds'
 import { DeviceFormat, EffectTails, MidiSection, PluginsSection } from './settings/AudioSections'
+import TranscriptionSection from './settings/TranscriptionSection'
+import { SettingsSearch, revealSetting, type SettingEntry } from './settings/search'
 
 const SECTIONS = [
   { k: 'appearance', label: 'Appearance', icon: Palette },
@@ -23,6 +25,7 @@ const SECTIONS = [
   { k: 'sounds', label: 'Instrument sounds', icon: Music },
   { k: 'plugins', label: 'Plug-ins', icon: Plug },
   { k: 'effects', label: 'Default effects', icon: SlidersHorizontal },
+  { k: 'transcribe', label: 'Transcription', icon: AudioLines },
   { k: 'engine', label: 'AI Engine', icon: Cpu },
   { k: 'import', label: 'Import', icon: Download },
   { k: 'export', label: 'Export', icon: Upload },
@@ -54,7 +57,7 @@ function SoundsSection() {
       <h2 className="font-display text-[22px] mb-1">Instrument sounds</h2>
       <p className="text-muted mb-2 leading-relaxed">Every part plays one of these. All of them are stored on this computer and work offline.</p>
       <CustomSounds />
-      <h3 className="font-display text-[19px] mt-8 mb-1">Built-in instruments</h3>
+      <h3 data-setting="builtinSounds" className="setting-row font-display text-[19px] mt-8 mb-1">Built-in instruments</h3>
       <p className="text-muted text-[12.5px] mb-3 leading-relaxed">Recorded instruments from the Salamander Grand Piano and the MusyngKite General MIDI set.</p>
       <div className="flex gap-2 mb-3">
         <button className="btn-primary" disabled={busy || !missing.length} onClick={() => dl(missing.map((p) => p.id))}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} {missing.length ? `Download ${missing.length} missing` : 'All sounds installed'}</button>
@@ -72,9 +75,9 @@ function SoundsSection() {
   )
 }
 
-function Row({ title, desc, children }: { title: string; desc?: ReactNode; children: ReactNode }) {
+function Row({ id, title, desc, children }: { id?: string; title: string; desc?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-6 py-3.5 border-b border-line last:border-0">
+    <div data-setting={id} className="setting-row flex items-center gap-6 py-3.5 border-b border-line last:border-0">
       <div className="flex-1 min-w-0"><div className="font-medium">{title}</div>{desc && <div className="text-muted text-[12.5px] mt-0.5 leading-relaxed">{desc}</div>}</div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -100,8 +103,8 @@ function UpdatesCard({ s, set }: { s: Settings; set: (p: Partial<Settings>) => v
   }
   return (
     <div className="card px-5 py-1 mb-5">
-      <Row title="Check for updates automatically" desc="When Aurel starts, look for a newer release on GitHub and ask before installing it."><Toggle on={s.checkUpdates} onChange={(v) => set({ checkUpdates: v })} /></Row>
-      <Row title="Updates" desc={state.text ?? (s.skippedVersion ? `Skipping version ${s.skippedVersion}.` : 'Updates download, install and restart Aurel for you.')}>
+      <Row id="checkUpdates" title="Check for updates automatically" desc="When Aurel starts, look for a newer release on GitHub and ask before installing it."><Toggle on={s.checkUpdates} onChange={(v) => set({ checkUpdates: v })} /></Row>
+      <Row id="updatesNow" title="Updates" desc={state.text ?? (s.skippedVersion ? `Skipping version ${s.skippedVersion}.` : 'Updates download, install and restart Aurel for you.')}>
         <button className="btn-soft" disabled={state.checking} onClick={() => void check()}>{state.checking ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Check now</button>
       </Row>
     </div>
@@ -119,28 +122,37 @@ export default function SettingsPage({ section }: { section?: string }) {
   const s = settings
   const set = (p: Partial<Settings>) => void updateSettings(p)
   const installJob = Object.values(jobs).find((j) => j.kind === 'install')
+  function openSetting(e: SettingEntry) {
+    setSec(e.section)
+    revealSetting(e.id)
+  }
 
   const themes = [{ k: 'dark', label: 'Dark' }, { k: 'light', label: 'Light' }, { k: 'sakura', label: 'Sakura' }] as const
 
   return (
     <div className="h-full flex">
       <aside aria-label="Settings categories" data-keyboard-menu="" onKeyDown={(event) => {
-        moveMenuFocus(event, Array.from(event.currentTarget.querySelectorAll("button:not(:disabled)")))
+        if (event.target instanceof HTMLInputElement) return
+        moveMenuFocus(event, Array.from(event.currentTarget.querySelectorAll(".settings-nav button:not(:disabled)")))
         if (event.defaultPrevented && document.activeElement instanceof HTMLButtonElement) document.activeElement.click()
-      }} className="w-[220px] shrink-0 px-3 pt-1 border-r border-line">
-        <h1 className="font-display text-[26px] px-2 mb-4">Settings</h1>
-        {SECTIONS.map((x) => (
-          <button key={x.k} autoFocus={sec === x.k} aria-current={sec === x.k ? "true" : undefined} onClick={() => setSec(x.k)} className={cx('w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px]', sec === x.k ? 'bg-accent/10 text-accent' : 'text-muted hover:text-fg hover:bg-fg/[0.05]')}>
-            <x.icon size={16} /> {x.label}
-          </button>
-        ))}
+      }} className="relative z-20 w-[236px] shrink-0 px-3 pt-1 border-r border-line flex flex-col">
+        <h1 className="font-display text-[26px] px-2 mb-3">Settings</h1>
+        <SettingsSearch sections={SECTIONS} onOpen={openSetting} />
+        <div className="settings-nav flex-1 min-h-0 overflow-y-auto -mx-1 px-1 pb-4">
+          {SECTIONS.map((x) => (
+            <button key={x.k} aria-current={sec === x.k ? "true" : undefined} onClick={() => setSec(x.k)} className={cx('settings-nav-item w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px]', sec === x.k ? 'on' : 'text-muted hover:text-fg hover:bg-fg/[0.05]')}>
+              <x.icon size={16} /> <span className="flex-1 text-left">{x.label}</span>
+              {x.k === 'transcribe' && engine?.ready && !engine.upgraded && <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" title="New models available" />}
+            </button>
+          ))}
+        </div>
       </aside>
       <div className="flex-1 overflow-auto">
         <div className="max-w-[720px] px-10 pb-16 animate-page" key={sec}>
           {sec === 'appearance' && (
             <>
               <h2 className="font-display text-[22px] mb-4">Appearance</h2>
-              <div className="grid grid-cols-3 gap-3 mb-6">
+              <div data-setting="theme" className="setting-row grid grid-cols-3 gap-3 mb-6">
                 {themes.map((t) => (
                   <button key={t.k} onClick={() => set({ theme: t.k })} aria-pressed={s.theme === t.k} className={cx('rounded-xl border-2 p-1.5 text-left transition-colors', s.theme === t.k ? 'border-accent' : 'border-line hover:border-faint')}>
                     <div className="theme-preview" data-theme={t.k} aria-hidden="true">
@@ -155,7 +167,7 @@ export default function SettingsPage({ section }: { section?: string }) {
                 ))}
               </div>
               {s.theme !== 'sakura' && (
-                <Row title="Accent colour">
+                <Row id="accent" title="Accent colour">
                   <div className="flex gap-2">
                     {[['gold', '#dcb670'], ['blue', '#7da8ff'], ['mint', '#6ecdaa'], ['rose', '#ec809e']].map(([k, c]) => (
                       <button key={k} onClick={() => set({ accent: k })} className={cx('h-7 w-7 rounded-full border-2', s.accent === k ? 'border-fg' : 'border-transparent')} style={{ background: c }} title={k} />
@@ -163,56 +175,63 @@ export default function SettingsPage({ section }: { section?: string }) {
                   </div>
                 </Row>
               )}
-              <Row title="Interface size" desc="Scale the whole interface.">
+              <Row id="uiScale" title="Interface size" desc="Scale the whole interface.">
                 <div className="seg">{[0.9, 1, 1.1, 1.25].map((z) => <button key={z} className={cx(s.uiScale === z && 'on')} onClick={() => set({ uiScale: z })}>{Math.round(z * 100)}%</button>)}</div>
               </Row>
               <ParticleRow value={s.particles} still={s.reduceMotion} onChange={(particles) => set({ particles })} />
-              <Row title="Reduce motion" desc="Keeps notes and rests still, hides falling petals, and turns off interface animations across all themes."><Toggle ariaLabel="Reduce motion" on={s.reduceMotion} onChange={(v) => set({ reduceMotion: v })} /></Row>
+              <Row id="particleSpeed" title="Floating notes speed" desc="How fast the background notes drift.">
+                <div className="flex items-center gap-3 w-56"><Slider title="Floating notes speed" value={s.particleSpeed ?? 1} min={0.25} max={2.5} step={0.05} onChange={(v) => set({ particleSpeed: v })} /><span className="w-10 text-right tabular-nums">{(s.particleSpeed ?? 1).toFixed(2).replace(/0$/, '')}×</span></div>
+              </Row>
+              <Row id="particleSize" title="Floating notes size">
+                <div className="flex items-center gap-3 w-56"><Slider title="Floating notes size" value={s.particleSize ?? 1} min={0.6} max={1.6} step={0.05} onChange={(v) => set({ particleSize: v })} /><span className="w-10 text-right tabular-nums">{Math.round((s.particleSize ?? 1) * 100)}%</span></div>
+              </Row>
+              <Row id="sidebarNames" title="Sidebar names" desc="Show page names and your open pieces, or icons only. The button at the bottom of the sidebar does the same."><Toggle ariaLabel="Sidebar names" on={s.sidebarOpen ?? true} onChange={(v) => set({ sidebarOpen: v })} /></Row>
+              <Row id="reduceMotion" title="Reduce motion" desc="Keeps notes and rests still, hides falling petals, and turns off interface animations across all themes."><Toggle ariaLabel="Reduce motion" on={s.reduceMotion} onChange={(v) => set({ reduceMotion: v })} /></Row>
             </>
           )}
           {sec === 'playback' && (
             <>
               <h2 className="font-display text-[22px] mb-4">Playback</h2>
-              <Row title="Count-in" desc="Clicks before playback starts. Also on the transport bar.">
+              <Row id="countIn" title="Count-in" desc="Clicks before playback starts. Also on the transport bar.">
                 <div className="flex items-center gap-3">
                   <div className="seg">{[1, 2, 4].map((n) => <button key={n} disabled={!s.countInOn} className={cx(s.countInOn && s.countInBars === n && 'on')} onClick={() => set({ countInBars: n })}>{n} bar{n > 1 ? 's' : ''}</button>)}</div>
                   <Toggle on={s.countInOn} onChange={(v) => set({ countInOn: v })} />
                 </div>
               </Row>
-              <Row title="Metronome volume"><div className="flex items-center gap-3 w-56"><Slider title="Metronome volume" value={s.metronomeVolume} min={0} max={1} onChange={(v) => set({ metronomeVolume: v })} /><span className="w-10 text-right tabular-nums">{Math.round(s.metronomeVolume * 100)}%</span></div></Row>
-              <Row title="Follow playback" desc="Scroll the score automatically to keep the cursor in view."><Toggle on={s.autoScroll} onChange={(v) => set({ autoScroll: v })} /></Row>
-              <Row title="Solo follows track selection" desc="Choosing a part solos it; going back to the full score clears the solos. Use the S button to unsolo while staying on a part."><Toggle on={s.soloFollowsView} onChange={(v) => set({ soloFollowsView: v })} /></Row>
-              <Row title="Playback cursor"><div className="seg">{(['band', 'line'] as const).map((c) => <button key={c} className={cx(s.cursorStyle === c && 'on')} onClick={() => set({ cursorStyle: c })}>{c === 'band' ? 'Band' : 'Thin line'}</button>)}</div></Row>
-              <Row title="Highlight playing notes" desc="Light up each note as it sounds."><Toggle on={s.highlightNotes} onChange={(v) => set({ highlightNotes: v })} /></Row>
+              <Row id="metronome" title="Metronome volume"><div className="flex items-center gap-3 w-56"><Slider title="Metronome volume" value={s.metronomeVolume} min={0} max={1} onChange={(v) => set({ metronomeVolume: v })} /><span className="w-10 text-right tabular-nums">{Math.round(s.metronomeVolume * 100)}%</span></div></Row>
+              <Row id="autoScroll" title="Follow playback" desc="Scroll the score automatically to keep the cursor in view."><Toggle on={s.autoScroll} onChange={(v) => set({ autoScroll: v })} /></Row>
+              <Row id="soloFollows" title="Solo follows track selection" desc="Choosing a part solos it; going back to the full score clears the solos. Use the S button to unsolo while staying on a part."><Toggle on={s.soloFollowsView} onChange={(v) => set({ soloFollowsView: v })} /></Row>
+              <Row id="cursorStyle" title="Playback cursor"><div className="seg">{(['band', 'line'] as const).map((c) => <button key={c} className={cx(s.cursorStyle === c && 'on')} onClick={() => set({ cursorStyle: c })}>{c === 'band' ? 'Band' : 'Thin line'}</button>)}</div></Row>
+              <Row id="highlightNotes" title="Highlight playing notes" desc="Light up each note as it sounds."><Toggle on={s.highlightNotes} onChange={(v) => set({ highlightNotes: v })} /></Row>
               <EffectTails s={s} set={set} />
             </>
           )}
           {sec === 'audio' && (
             <>
               <h2 className="font-display text-[22px] mb-4">Audio device</h2>
-              <Row title="Output device" desc="Where playback, previews and the metronome are heard.">
+              <Row id="outputDevice" title="Output device" desc="Where playback, previews and the metronome are heard.">
                 <Select width={280} value={s.outputDevice} onChange={(v) => set({ outputDevice: v })} options={[{ value: '', label: 'System default' }, ...outputs.map((o) => ({ value: o.id, label: o.label }))]} />
               </Row>
-              <Row title="Master volume"><div className="flex items-center gap-3 w-56"><Slider title="Master volume" value={s.masterVolume} min={0} max={1.2} onChange={(v) => set({ masterVolume: v })} /><span className="w-10 text-right tabular-nums">{Math.round(s.masterVolume * 100)}%</span></div></Row>
+              <Row id="masterVolume" title="Master volume"><div className="flex items-center gap-3 w-56"><Slider title="Master volume" value={s.masterVolume} min={0} max={1.2} onChange={(v) => set({ masterVolume: v })} /><span className="w-10 text-right tabular-nums">{Math.round(s.masterVolume * 100)}%</span></div></Row>
               <DeviceFormat s={s} set={set} />
-              <Row title="Test sound" desc="Each chord uses a randomly chosen instrument."><TestChordButton /></Row>
+              <Row id="testSound" title="Test sound" desc="Each chord uses a randomly chosen instrument."><TestChordButton /></Row>
             </>
           )}
           {sec === 'editor' && (
             <>
               <h2 className="font-display text-[22px] mb-4">Editor</h2>
-              <Row title="Deleting a note" desc="Leave a rest keeps every other note where it is. Shift back pulls the notes after it earlier to close the gap. The right-click menu always offers both.">
+              <Row id="deleteMode" title="Deleting a note" desc="Leave a rest keeps every other note where it is. Shift back pulls the notes after it earlier to close the gap. The right-click menu always offers both.">
                 <div className="seg">{([['rest', 'Leave a rest'], ['shift', 'Shift back']] as const).map(([k, label]) => <button key={k} className={cx(s.deleteMode === k && 'on')} onClick={() => set({ deleteMode: k })}>{label}</button>)}</div>
               </Row>
-              <Row title="Piano, fretboard & MIDI keyboard" desc="Write adds the notes you play to the score; Play only lets you play without writing. You can switch any time in the studio.">
+              <Row id="inputMode" title="Piano, fretboard & MIDI keyboard" desc="Write adds the notes you play to the score; Play only lets you play without writing. You can switch any time in the studio.">
                 <div className="seg">{(['write', 'play'] as const).map((m) => <button key={m} className={cx(s.inputMode === m && 'on')} onClick={() => { set({ inputMode: m }); useProject.getState().setInputMode(m) }}>{m === 'write' ? 'Write' : 'Play only'}</button>)}</div>
               </Row>
-              <Row title="Hear notes while writing" desc="Play each note as you enter or change it."><Toggle on={s.noteInputPreview} onChange={(v) => set({ noteInputPreview: v })} /></Row>
-              <Row title="Use two staves for keyboard instruments" desc="New piano, E-Piano and organ parts use treble and bass staves."><Toggle on={s.pianoGrandStaff} onChange={(v) => set({ pianoGrandStaff: v })} /></Row>
-              <Row title="Default notation view" desc="Used when a song is opened for the first time.">
+              <Row id="notePreview" title="Hear notes while writing" desc="Play each note as you enter or change it."><Toggle on={s.noteInputPreview} onChange={(v) => set({ noteInputPreview: v })} /></Row>
+              <Row id="grandStaff" title="Use two staves for keyboard instruments" desc="New piano, E-Piano and organ parts use treble and bass staves."><Toggle on={s.pianoGrandStaff} onChange={(v) => set({ pianoGrandStaff: v })} /></Row>
+              <Row id="defaultView" title="Default notation view" desc="Used when a song is opened for the first time.">
                 <div className="seg">{(['staff', 'tab', 'both'] as const).map((v) => <button key={v} className={cx(s.defaultView === v && 'on')} onClick={() => set({ defaultView: v })}>{v === 'staff' ? 'Sheet' : v === 'tab' ? 'Tab' : 'Both'}</button>)}</div>
               </Row>
-              <Row title="Chords" desc={<>Click <b>Chord</b> in the toolbar or press <b>{CHORD_SHORTCUT}</b> to toggle chord mode. Notes stack on the same beat. Press → to move on.</>}><span className="kbd">{CHORD_SHORTCUT}</span></Row>
+              <Row id="chords" title="Chords" desc={<>Click <b>Chord</b> in the toolbar or press <b>{CHORD_SHORTCUT}</b> to toggle chord mode. Notes stack on the same beat. Press → to move on.</>}><span className="kbd">{CHORD_SHORTCUT}</span></Row>
             </>
           )}
           {sec === 'sounds' && <SoundsSection />}
@@ -221,7 +240,7 @@ export default function SettingsPage({ section }: { section?: string }) {
           {sec === 'effects' && <EffectsSettings settings={s} />}
           {sec === 'legal' && (
             <>
-              <h2 className="font-display text-[22px] mb-4">Terms of Use & Privacy</h2>
+              <h2 data-setting="terms" className="font-display text-[22px] mb-4">Terms of Use & Privacy</h2>
               <div className="card p-5 space-y-3 text-[13px] leading-relaxed text-muted select-text">
                 <p><b className="text-fg">Your content, your responsibility.</b> Aurel is a tool that runs on your computer. You are solely responsible for the audio you import or download, including from YouTube or other sites, and for how you use any recordings, stems, transcriptions, scores or exports you make with it. Only use content you have the right to use and follow the laws and platform terms that apply to you.</p>
                 <p><b className="text-fg">No warranty.</b> Aurel is provided “as is”, without warranties of any kind. Its authors are not liable for any claim, damage or loss arising from your use of the software or of content you process with it.</p>
@@ -231,17 +250,18 @@ export default function SettingsPage({ section }: { section?: string }) {
               <h3 className="font-display text-[17px] mt-6 mb-2">Credits</h3>
               <div className="card divide-y divide-line text-[12.5px]">
                 {[...new Set(SOUND_PACKS.map((p) => p.credit))].map((c) => <div key={c} className="px-4 py-2.5 text-muted">{c}</div>)}
-                <div className="px-4 py-2.5 text-muted">Demucs (MIT) by Meta AI · Basic Pitch (Apache 2.0) by Spotify · Whisper (MIT) by OpenAI · librosa (ISC) · VexFlow (MIT) · FFmpeg (GPL) · yt-dlp (Unlicense) · Deno (MIT) · uv (MIT)</div>
+                <div className="px-4 py-2.5 text-muted">Demucs (MIT) by Meta AI · Basic Pitch (Apache 2.0) by Spotify · Whisper (MIT) by OpenAI · Transkun (MIT) by Yujia Yan and Zhiyao Duan · Beat This! (MIT) by CP JKU, ONNX export by danigb · CREPE / torchcrepe (MIT) · ADTOF (CC BY-NC-SA 4.0) by Mickaël Zehren et al., PyTorch port by Xavier Riley · librosa (ISC) · VexFlow (MIT) · FFmpeg (GPL) · yt-dlp (Unlicense) · Deno (MIT) · uv (MIT)</div>
               </div>
             </>
           )}
+          {sec === 'transcribe' && <TranscriptionSection s={s} set={set} />}
           {sec === 'engine' && (
             <>
               <h2 className="font-display text-[22px] mb-1">AI Engine</h2>
-              <p className="text-muted mb-4 leading-relaxed">Demucs separates the stems. Basic Pitch transcribes instrument notes, and Whisper recognizes the singer’s words. Everything runs locally on your computer — after setup, no internet is needed.</p>
-              <div className="card p-4 mb-4">
+              <p className="text-muted mb-4 leading-relaxed">Demucs separates the instruments and Beat This! finds the beats and bar lines. Transkun writes piano and guitar notes, CREPE follows bass and singing, ADTOF hears the drums, and Whisper recognises the words. Everything runs on your computer; after setup no internet is needed. Choose how it transcribes in <button className="text-accent hover:underline" onClick={() => setSec('transcribe')}>Transcription</button>.</p>
+              <div data-setting="engineInstall" className="setting-row card p-4 mb-4">
                 <div className="flex items-center gap-3">
-                  <div className={cx('h-2.5 w-2.5 rounded-full', engine?.ready ? 'bg-ok' : 'bg-warn')} />
+                  <div className={cx('h-2.5 w-2.5 rounded-full', engine?.ready ? (engine.upgraded ? 'bg-ok' : 'bg-warn') : 'bg-warn')} />
                   <div className="flex-1">
                     <div className="font-medium">{engine?.ready ? 'Ready' : 'Not installed'}</div>
                     <div className="text-[12.5px] text-muted">
@@ -249,7 +269,7 @@ export default function SettingsPage({ section }: { section?: string }) {
                     </div>
                   </div>
                   <button className="icon-btn" title="Re-check" onClick={() => refreshEngine(true)}><RefreshCw size={15} /></button>
-                  {!engine?.ready && <button className="btn-primary" disabled={!!installJob && !installJob.done} onClick={async () => { const { jobId } = await api.engine.install(); track(jobId, 'Installing AI engine') }}>Install engine</button>}
+                  {(!engine?.ready || !engine.upgraded) && <button className="btn-primary" disabled={!!installJob && !installJob.done} onClick={async () => { const { jobId } = await api.engine.install(); track(jobId, engine?.ready ? 'Adding the new transcription models' : 'Installing AI engine') }}>{engine?.ready ? 'Add new models' : 'Install engine'}</button>}
                 </div>
                 {engine?.ready && (
                   <div className="flex flex-wrap gap-1.5 mt-3">{Object.entries(engine.packages).map(([k, v]) => <span key={k} className="chip">{k} {v ?? '—'}</span>)}</div>
@@ -263,13 +283,13 @@ export default function SettingsPage({ section }: { section?: string }) {
                 )}
                 {!engine?.ready && <p className="text-[12px] text-faint mt-3 leading-relaxed">Nothing to install by hand: Aurel downloads its own private Python, PyTorch (the GPU build if an NVIDIA card is found) and the models — roughly 3–5 GB, once. It also starts automatically the first time you press Transcribe.</p>}
               </div>
-              <Row title="Processing device"><div className="seg">{(['auto', 'cuda', 'cpu'] as const).map((d) => <button key={d} className={cx(s.device === d && 'on')} onClick={() => set({ device: d })}>{d === 'auto' ? 'Auto' : d.toUpperCase()}</button>)}</div></Row>
-              <Row title="Separation model" desc="Fine-tuned 4-source separates vocals, bass, drums and music. It takes longer. Choose 6-source to separate guitar and piano too.">
+              <Row id="device" title="Processing device"><div className="seg">{(['auto', 'cuda', 'cpu'] as const).map((d) => <button key={d} className={cx(s.device === d && 'on')} onClick={() => set({ device: d })}>{d === 'auto' ? 'Auto' : d.toUpperCase()}</button>)}</div></Row>
+              <Row id="separationModel" title="Separation model" desc="Fine-tuned 4-source separates vocals, bass, drums and music. It takes longer. Choose 6-source to separate guitar and piano too.">
                 <Select width={224} value={s.separationModel} onChange={(v) => set({ separationModel: v })} options={[{ value: 'htdemucs_6s', label: 'HT-Demucs 6-source' }, { value: 'htdemucs', label: 'HT-Demucs 4-source' }, { value: 'htdemucs_ft', label: 'HT-Demucs fine-tuned' }]} />
               </Row>
-              <Row title="Split drums" desc="Also write approximate kick / snare / hi-hat stems (frequency-band split)."><Toggle on={s.drumSplit} onChange={(v) => set({ drumSplit: v })} /></Row>
+              <Row id="drumSplit" title="Split drums" desc="Also write approximate kick / snare / hi-hat stems (frequency-band split)."><Toggle on={s.drumSplit} onChange={(v) => set({ drumSplit: v })} /></Row>
               <p className="text-[13px] text-muted py-3">After importing, choose instruments or automatic detection, then press Start transcription.</p>
-              <Row title="Custom Python (advanced)" desc="Leave empty to use Aurel’s own environment.">
+              <Row id="pythonPath" title="Custom Python (advanced)" desc="Leave empty to use Aurel’s own environment.">
                 <input className="field !w-64" placeholder={"C:\\Python310\\python.exe"} defaultValue={s.pythonPath} onBlur={(e) => { set({ pythonPath: e.target.value.trim() }); setTimeout(() => refreshEngine(true), 200) }} />
               </Row>
             </>
@@ -277,34 +297,34 @@ export default function SettingsPage({ section }: { section?: string }) {
           {sec === 'import' && (
             <>
               <h2 className="font-display text-[22px] mb-4">Import</h2>
-              <Row title="YouTube importer" desc="Aurel downloads and keeps its own copy of yt-dlp. YouTube changes often; if imports start failing, update it.">
+              <Row id="ytdlp" title="YouTube importer" desc="Aurel downloads and keeps its own copy of yt-dlp. YouTube changes often; if imports start failing, update it.">
                 <div className="flex gap-2">
                   <button className="btn-soft !h-9" onClick={async () => { setChecking(true); const r = await api.youtube.check('https://www.youtube.com/watch?v=aqz-KE-bpKQ'); setYt(r.tool.available ? `Installed: yt-dlp ${r.tool.version}` : 'Not installed yet — it downloads automatically on your first YouTube import.'); setChecking(false) }}>{checking ? <Loader2 size={14} className="animate-spin" /> : 'Check'}</button>
                   <button className="btn-soft !h-9" onClick={async () => { const { jobId } = await api.youtube.update(); track(jobId, 'Updating YouTube importer') }}>Update now</button>
                 </div>
               </Row>
-              <Row title="Custom yt-dlp (advanced)" desc="Leave empty to use Aurel’s own copy.">
+              <Row id="ytdlpPath" title="Custom yt-dlp (advanced)" desc="Leave empty to use Aurel’s own copy.">
                 <input className="field !w-56" placeholder="Bundled" defaultValue={s.ytDlpPath} onBlur={(e) => set({ ytDlpPath: e.target.value.trim() })} />
               </Row>
               {yt && <p className="text-[12.5px] text-muted -mt-1 mb-2">{yt}</p>}
-              <Row title="Duplicate detection" desc="Files are fingerprinted (SHA-256) and YouTube videos matched by ID, so re-importing opens the existing song."><span className="chip !text-ok">On</span></Row>
+              <Row id="duplicates" title="Duplicate detection" desc="Files are fingerprinted (SHA-256) and YouTube videos matched by ID, so re-importing opens the existing song."><span className="chip !text-ok">On</span></Row>
             </>
           )}
           {sec === 'export' && (
             <>
               <h2 className="font-display text-[22px] mb-4">Export defaults</h2>
-              <Row title="Sample rate"><div className="seg">{([44100, 48000, 96000] as const).map((r) => <button key={r} className={cx(s.export.sampleRate === r && 'on')} onClick={() => set({ export: { ...s.export, sampleRate: r } })}>{r / 1000} kHz</button>)}</div></Row>
-              <Row title="Bit depth"><div className="seg">{([16, 24, 32] as const).map((b) => <button key={b} className={cx(s.export.bitDepth === b && 'on')} onClick={() => set({ export: { ...s.export, bitDepth: b } })}>{b === 32 ? '32 float' : `${b}-bit`}</button>)}</div></Row>
-              <Row title="Channels"><div className="seg">{([2, 1] as const).map((c) => <button key={c} className={cx(s.export.channels === c && 'on')} onClick={() => set({ export: { ...s.export, channels: c } })}>{c === 2 ? 'Stereo' : 'Mono'}</button>)}</div></Row>
-              <Row title="Normalize" desc="Peak-normalize single-file exports to -0.3 dBFS. DAW stem packages are never normalized individually, so relative levels stay intact."><Toggle on={s.export.normalize} onChange={(v) => set({ export: { ...s.export, normalize: v } })} /></Row>
-              <Row title="Release tail" desc="Extra seconds rendered after the last measure so notes ring out.">
+              <Row id="exportSampleRate" title="Sample rate"><div className="seg">{([44100, 48000, 96000] as const).map((r) => <button key={r} className={cx(s.export.sampleRate === r && 'on')} onClick={() => set({ export: { ...s.export, sampleRate: r } })}>{r / 1000} kHz</button>)}</div></Row>
+              <Row id="bitDepth" title="Bit depth"><div className="seg">{([16, 24, 32] as const).map((b) => <button key={b} className={cx(s.export.bitDepth === b && 'on')} onClick={() => set({ export: { ...s.export, bitDepth: b } })}>{b === 32 ? '32 float' : `${b}-bit`}</button>)}</div></Row>
+              <Row id="channels" title="Channels"><div className="seg">{([2, 1] as const).map((c) => <button key={c} className={cx(s.export.channels === c && 'on')} onClick={() => set({ export: { ...s.export, channels: c } })}>{c === 2 ? 'Stereo' : 'Mono'}</button>)}</div></Row>
+              <Row id="normalize" title="Normalize" desc="Peak-normalize single-file exports to -0.3 dBFS. DAW stem packages are never normalized individually, so relative levels stay intact."><Toggle on={s.export.normalize} onChange={(v) => set({ export: { ...s.export, normalize: v } })} /></Row>
+              <Row id="tail" title="Release tail" desc="Extra seconds rendered after the last measure so notes ring out.">
                 <div className="flex items-center gap-3 w-56"><Slider title="Release tail" value={s.export.tail} min={0} max={8} step={0.5} onChange={(v) => set({ export: { ...s.export, tail: v } })} /><span className="tabular-nums w-10 text-right">{s.export.tail}s</span></div>
               </Row>
             </>
           )}
           {sec === 'shortcuts' && (
             <>
-              <h2 className="font-display text-[22px] mb-4">Keyboard shortcuts</h2>
+              <h2 data-setting="shortcuts" className="font-display text-[22px] mb-4">Keyboard shortcuts</h2>
               {SHORTCUTS.map((g) => (
                 <div key={g.group} className="mb-6">
                   <div className="label mb-2">{g.group}</div>
@@ -321,13 +341,13 @@ export default function SettingsPage({ section }: { section?: string }) {
               <p className="text-muted text-[13px] mb-3">by Praise Onuoha</p>
               <p className="text-muted mb-5">Notation-first transcription, composition and practice.</p>
               <UpdatesCard s={s} set={set} />
-              <div className="card p-5 space-y-3 text-[13px] leading-relaxed">
+              <div data-setting="limits" className="setting-row card p-5 space-y-3 text-[13px] leading-relaxed">
                 <div className="font-medium">What to expect from automatic transcription</div>
                 <ul className="list-disc pl-5 space-y-1.5 text-muted">
                   <li><b className="text-fg">Separation</b> is very good for vocals, drums and bass; guitar and piano stems often contain bleed from each other. Multiple guitars are only split when they are panned apart.</li>
-                  <li><b className="text-fg">Pitch</b> is reliable for clear monophonic lines (bass and instrumental leads). Dense chords, distorted guitar and reverb-heavy mixes produce extra or missing notes.</li>
-                  <li><b className="text-fg">Rhythm</b> is quantized to 16ths at one detected tempo. Triplets, swing, rubato and tempo changes are not captured; the first beat is assumed to be a downbeat.</li>
-                  <li><b className="text-fg">Drums</b> are detected by frequency band: kick, snare, hi-hat and cymbals. Toms and ghost notes are mostly missed.</li>
+                  <li><b className="text-fg">Pitch</b> is reliable for bass, sung melodies and piano. Dense guitar parts, heavy distortion and reverb-heavy mixes still produce some extra or missing notes; the Note sensitivity slider trades one for the other.</li>
+                  <li><b className="text-fg">Rhythm</b> follows the detected beats and bar lines, so a band that speeds up stays in time, and swing is written as straight eighths. Each beat gets the simplest rhythm that fits. Triplets inside a straight beat are rounded to the nearest 16th (compound time like 6/8 and 12/8 is detected).</li>
+                  <li><b className="text-fg">Drums</b> (Advanced) cover kick, snare, toms, hi-hat and cymbals. Ghost notes and open vs. closed hi-hat are often missed.</li>
                   <li><b className="text-fg">Tab</b> fingerings are chosen automatically for playability, not from the recording. Bends, slides and other techniques are not detected — add them by hand.</li>
                   <li>Instrument type (clean vs. distorted, acoustic vs. electric) is a heuristic guess with a confidence badge. Correct it from the part menu.</li>
                 </ul>
@@ -351,7 +371,7 @@ function ParticleRow({ value, still, onChange }: { value: number; still: boolean
   const heavy = local > PARTICLE_WARN
   const pct = (local / PARTICLE_MAX) * 100
   return (
-    <Row title="Floating notes" desc={still ? 'Shown still while Reduce motion is on.' : heavy ? 'This many can make Aurel slower on older computers or laptops on battery.' : 'Notes and rests drifting behind the app (petals in Sakura).'}>
+    <Row id="particles" title="Floating notes" desc={still ? 'Shown still while Reduce motion is on.' : heavy ? 'This many can make Aurel slower on older computers or laptops on battery.' : 'Notes and rests drifting behind the app (petals in Sakura).'}>
       <div className="flex items-center gap-3 w-64">
         <input type="range" aria-label="Floating notes" min={0} max={PARTICLE_MAX} step={2} value={local}
           className={cx('slider', heavy ? 'danger-high' : 'danger-low')}
