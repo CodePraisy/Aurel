@@ -1,68 +1,87 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Project } from '@shared/types'
-import { PPQ } from '@shared/types'
 import { player } from '@/audio/player'
-import { measureCount, tempoMap } from '@/music/score'
 import { measureTicks } from '@/music/theory'
-import { recordingRate } from '@shared/rhythm'
+import { lyricLines, lyricTimestamp, lyricTiming, type LyricWord } from '@/music/lyrics'
+import type { ScoreLayout } from '@/notation/render'
 import { useProject } from '@/store/project'
-import { cx, fmtTime } from '@/components/ui'
+import { useApp } from '@/store/app'
+import { cx } from '@/components/ui'
 
-export default function VocalWords({ project, expanded }: { project: Project; expanded: boolean }) {
+export default function VocalWords({ project, layout }: { project: Project; layout?: ScoreLayout }) {
   const [editing, setEditing] = useState(false)
   const [tick, setTick] = useState(0)
-  const part = project.score.parts.find((part) => part.kind === 'singer' &&
-    (!project.view?.part || project.view.part === 'all' || project.view.part === part.id))
+  const activeLine = useRef<HTMLDivElement>(null)
+  const follow = useApp((s) => s.settings?.autoScroll ?? true)
+  const part = project.score.parts.find((p) => p.kind === 'singer')
+  const timing = useMemo(() => lyricTiming(project), [project])
+  const lines = useMemo(() => lyricLines(part?.lyrics?.words ?? []), [part?.lyrics])
   useEffect(() => {
     if (!part) return
-    const timer = setInterval(() => setTick(player.getTick()), 100)
+    const timer = setInterval(() => setTick(player.getTick()), 50)
     return () => clearInterval(timer)
   }, [part?.id])
+  const seconds = timing.toSeconds(tick)
+  const currentLine = lines.findIndex((line, i) => seconds >= line[0].start && (i === lines.length - 1 || seconds < lines[i + 1][0].start))
+  useEffect(() => {
+    if (!layout && follow && player.state === 'playing') activeLine.current?.scrollIntoView({
+      block: 'center', behavior: document.documentElement.dataset.motion === 'reduce' ? 'instant' : 'smooth'
+    })
+  }, [currentLine, follow, layout])
   if (!part) return null
   const lyrics = part.lyrics
-  const timing = tempoMap(project.score)
-  const mt = measureTicks(project.score.timeSig)
-  const barCount = Math.max(1, measureCount(project.score))
-  const rowTicks = mt * 4
-  const toTick = (seconds: number) => timing.secToTick((seconds - (project.audio?.offset ?? 0)) / recordingRate(project, 1))
-  const editWord = (index: number, text: string) => useProject.getState().patchProject((project) => {
-    const target = project.score.parts.find((p) => p.id === part.id)?.lyrics
-    if (!target) return
-    target.words[index].text = text
-    target.text = target.words.map((word) => word.text).join(' ')
-  })
-  return (
-    <div className={cx('border-t border-line bg-panel/60 px-4 py-3 overflow-auto', expanded ? 'flex-1 min-h-0' : 'max-h-64 shrink-0')}>
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div><div className="font-display text-lg">Singer · lyric timeline</div>
-          <p className="text-[11px] text-muted">Click words to seek. Bar lines and beat marks follow the score. Recognized words may need correction.</p></div>
-        <button className="btn-soft !h-7" disabled={!lyrics?.words.length} onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit words'}</button>
-      </div>
-      {lyrics?.error && <p className="text-bad text-[12px] mb-3">Words could not be recognized. Re-transcribe to retry. {lyrics.error}</p>}
-      {!lyrics?.words.length && <p className="text-[12px] text-muted mb-3">{lyrics ? 'No words were recognized.' : 'Re-transcribe this recording to recognize the singer’s words.'}</p>}
-      {editing ? <div className="flex flex-wrap gap-2">{lyrics?.words.map((word, index) =>
-        <label key={index} className="text-[10px] text-muted">{fmtTime(word.start)}
-          <input aria-label={`Word ${index + 1}`} className="field !h-7 !w-28 block" value={word.text} onChange={(e) => editWord(index, e.target.value)} />
-        </label>)}</div> :
-        Array.from({ length: Math.ceil(barCount / 4) }, (_, row) => {
-          const start = row * rowTicks
-          const end = Math.min((row + 1) * rowTicks, barCount * mt)
-          const rowWords = (lyrics?.words ?? []).filter((word) => toTick(word.end) > start && toTick(word.start) < end)
-          const beats = (end - start) / (PPQ * 4 / project.score.timeSig.den)
-          return <div key={row} className="relative h-28 mb-3 rounded-lg border border-line overflow-hidden">
-            {Array.from({ length: Math.ceil(beats) }, (_, beat) => <div key={beat} className={cx('absolute inset-y-0 border-l', beat % project.score.timeSig.num ? 'border-line/40' : 'border-accent/40')} style={{ left: `${beat / beats * 100}%` }}>
-              <span className="text-[10px] text-faint px-1">{beat % project.score.timeSig.num === 0 ? row * 4 + Math.floor(beat / project.score.timeSig.num) + 1 : ''}</span>
-            </div>)}
-            {rowWords.map((word, index) => {
-              const left = Math.max(start, toTick(word.start))
-              const right = Math.min(end, toTick(word.end))
-              return <button key={index} className={cx('absolute top-8 h-10 text-left px-1 border rounded text-[12px] truncate', tick >= toTick(word.start) && tick < toTick(word.end) ? 'bg-accent/25 border-accent text-accent' : 'bg-raised border-line')}
-                style={{ left: `${(left - start) / (end - start) * 100}%`, width: `${Math.max(0.3, (right - left) / (end - start) * 100)}%` }}
-                title={`${word.text} · ${fmtTime(word.start)}`} onClick={() => player.seek(Math.max(0, toTick(word.start)))}>{toTick(word.start) < start ? '…' : word.text}</button>
-            })}
-            {tick >= start && tick < end && <div className="absolute inset-y-0 w-px bg-accent pointer-events-none" style={{ left: `${(tick - start) / (end - start) * 100}%` }} />}
-          </div>
-        })}
+  const wordButton = (word: LyricWord, index: number, large = false) => {
+    const active = seconds >= word.start && seconds < word.end
+    return <button key={index} data-lyric-start={word.start} aria-current={active ? 'true' : undefined}
+      className={cx('inline-flex flex-col items-start text-left rounded-md transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
+        large ? 'px-1.5 py-2 hover:bg-accent/10' : 'px-1.5 py-0.5 hover:bg-accent/10',
+        active ? 'text-accent bg-accent/10' : seconds >= word.end ? (large ? 'text-fg' : 'text-ink') : (large ? 'text-muted' : 'text-ink/60'))}
+      title={`Play from ${lyricTimestamp(word.start)}`} aria-label={`${word.text.trim()}, ${lyricTimestamp(word.start)}`}
+      onClick={() => player.seek(Math.max(0, timing.toTick(word.start)))}>
+      <span className={cx('break-words max-w-full', large ? 'text-[clamp(24px,3vw,44px)] font-semibold leading-tight' : 'text-[14px] leading-6')}>{word.text.trim()}</span>
+      {large && <span className="text-[10px] leading-5 font-normal tabular-nums text-muted">{lyricTimestamp(word.start)}</span>}
+    </button>
+  }
+  if (layout) {
+    const mt = measureTicks(project.score.timeSig)
+    return <div className="absolute inset-0 pointer-events-none" aria-label="Lyrics beneath the score">
+      {layout.systems.map((system, index) => {
+        const start = system.measures[0].index * mt
+        const end = (system.measures.at(-1)!.index + 1) * mt
+        const words = (lyrics?.words ?? []).filter((w) => timing.toTick(w.start) >= start && timing.toTick(w.start) < end)
+        return words.length ? <div key={index} className="absolute pointer-events-auto flex flex-wrap content-start items-start"
+          style={{ left: system.measures[0].x, top: system.bottom - 10,
+            width: layout.width - system.measures[0].x - 14, zoom: layout.zoom }}>
+          {words.map((word, wi) => wordButton(word, wi))}
+        </div> : null
+      })}
     </div>
-  )
+  }
+  return <div className="flex-1 min-h-0 overflow-auto bg-paper/50" aria-label="Lyrics view">
+    <div className="max-w-4xl mx-auto px-8 py-8 sm:px-12">
+      <div className="flex items-center justify-between gap-4 mb-10">
+        <div><h2 className="font-display text-2xl">{project.score.title}</h2>
+          <p className="text-sm text-muted mt-1">{project.score.composer ? `${project.score.composer} · ` : ''}{part.name} · Click a word to jump to it</p></div>
+        <button className="btn-soft shrink-0" disabled={!lyrics?.words.length} onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit words'}</button>
+      </div>
+      {lyrics?.error && <p className="text-bad text-sm mb-6">Words could not be recognized. Re-transcribe to retry.</p>}
+      {!lyrics?.words.length && <p className="text-sm text-muted">{lyrics ? 'No words were recognized.' : 'Re-transcribe this recording to recognize the singer’s words.'}</p>}
+      {editing ? <div className="flex flex-wrap gap-3">{lyrics?.words.map((word, index) =>
+        <label key={index} className="text-[11px] text-muted tabular-nums">{lyricTimestamp(word.start)}
+          <input aria-label={`Word ${index + 1}`} className="field !h-8 !w-32 block mt-1" value={word.text} onChange={(e) => {
+            const text = e.target.value
+            useProject.getState().patchProject((p) => {
+              const target = p.score.parts.find((x) => x.id === part.id)?.lyrics
+              if (!target) return
+              target.words[index].text = text
+              target.text = target.words.map((w) => w.text).join(' ')
+            })
+          }} />
+        </label>)}</div> : <div className="pb-[35vh] space-y-7">{lines.map((line, index) =>
+        <div key={index} ref={index === currentLine ? activeLine : undefined} data-lyric-line={index}
+          className={cx('flex flex-wrap gap-x-1 scroll-my-24 transition-opacity', currentLine >= 0 && index !== currentLine && 'opacity-50')}>
+          {line.map((word, wi) => wordButton(word, wi, true))}
+        </div>)}</div>}
+    </div>
+  </div>
 }

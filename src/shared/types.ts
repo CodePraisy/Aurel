@@ -130,7 +130,7 @@ export interface Project {
   audio?: ProjectAudio
   analysis?: AnalysisInfo
   practice: { loops: PracticeLoop[]; speed: number; listen?: Listen }
-  view?: { mode: ViewMode; zoom: number; part: string | 'all' }
+  view?: { mode: ViewMode; zoom: number; part: string | 'all'; lyricsMode?: boolean }
 }
 
 export type ViewMode = 'staff' | 'tab' | 'both'

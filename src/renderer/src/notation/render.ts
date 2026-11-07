@@ -38,6 +38,7 @@ export interface RenderOptions {
   colors: Colors
   header?: boolean
   split?: boolean // one SVG per system (print: lets pages break between systems)
+  systemFooter?: (firstMeasure: number, lastMeasure: number, width: number) => number
 }
 
 const DUR_CODE: Record<number, string> = { [WHOLE]: 'w', [WHOLE / 2]: 'h', [PPQ]: 'q', [PPQ / 2]: '8', [PPQ / 4]: '16', [PPQ / 8]: '32' }
@@ -142,7 +143,7 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
       return placed
     })
     const bottom = rowY + (placedRows.at(-1)?.below ?? 0)
-    y = bottom + systemBottom
+    y = bottom + systemBottom + (o.systemFooter?.(measures[0], measures.at(-1)!, W - marginL - marginR) ?? 0)
     return { top, bottom, rows: placedRows }
   })
   const totalH = y + 10

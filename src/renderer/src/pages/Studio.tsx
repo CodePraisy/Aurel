@@ -130,6 +130,10 @@ export default function Studio({ projectId }: { projectId: string }) {
   const loop = player.opts.loopOn ? player.opts.loop : null
   const hasParts = s.parts.length > 0
   const singerView = s.parts.some((part) => part.kind === "singer") && (s.parts.every((part) => part.kind === "singer") || s.parts.find((part) => part.id === p.view?.part)?.kind === "singer")
+  const hasSinger = s.parts.some((part) => part.kind === 'singer')
+  const hasNotation = s.parts.some((part) => part.kind !== 'singer')
+  const lyricsMode = hasSinger && (!hasNotation || (p.view?.lyricsMode ?? singerView))
+  const sheetProject = singerView ? { ...p, view: { mode, zoom, ...p.view, part: 'all' } } : p
   const editArpeggio = (partId: string, eventId: string) => setRollTarget({ partId, eventId })
   const rollChord = rollTarget && s.parts.find((part) => part.id === rollTarget.partId)?.measures
     .flatMap((m) => m.events).find((event) => event.id === rollTarget.eventId)
@@ -223,13 +227,19 @@ export default function Studio({ projectId }: { projectId: string }) {
         <div className="flex-1" />
         {hasParts && (
           <div className="flex items-center gap-1.5 no-drag">
-            <div className="seg">
+            {hasSinger && <div className="seg">
+                <button className={cx(!lyricsMode && 'on')} disabled={!hasNotation} onClick={() => setView({ lyricsMode: false })}>Staff</button>
+                <button className={cx(lyricsMode && 'on')} onClick={() => setView({ lyricsMode: true })}>Lyrics</button>
+            </div>}
+            {!lyricsMode && <div className="seg">
               {(['staff', 'tab', 'both'] as const).map((m) => <button key={m} className={cx(mode === m && 'on')} onClick={() => setView({ mode: m })}>{m === 'staff' ? 'Sheet' : m === 'tab' ? 'Tab' : 'Both'}</button>)}
-            </div>
+            </div>}
+            {!lyricsMode && <>
             <button className="icon-btn" title="Zoom out (Ctrl −)" onClick={() => setView({ zoom: Math.max(0.5, +(zoom - 0.1).toFixed(2)) })}><ZoomOut size={16} /></button>
             <span className="text-[11.5px] text-muted w-9 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
             <button className="icon-btn" title="Zoom in (Ctrl +)" onClick={() => setView({ zoom: Math.min(2, +(zoom + 0.1).toFixed(2)) })}><ZoomIn size={16} /></button>
             <button className={cx('icon-btn', showInst && 'on')} title="Fretboard / keyboard" onClick={() => { setShowInst(!showInst); store('aurel.inst', showInst ? 0 : 1) }}><PanelBottom size={16} /></button>
+            </>}
           </div>
         )}
         {p.audio && !job && !installJob && hasParts && (
@@ -264,11 +274,11 @@ export default function Studio({ projectId }: { projectId: string }) {
         </aside>
         <div className="w-1 -ml-0.5 cursor-col-resize hover:bg-accent/40 z-10" onMouseDown={dragSide} />
         <section className="flex-1 min-w-0 flex flex-col">
-          {hasParts && !singerView ? (
+          {hasParts && !lyricsMode && hasNotation ? (
             <>
               <Toolbar project={p} onEditArpeggio={editArpeggio} onTranspose={() => setTransposeTarget('score')} />
-              <div className="flex-1 min-h-0"><ScoreView project={p} loop={loop} onEditArpeggio={editArpeggio} /></div>
-              {showInst && (
+              <div className="flex-1 min-h-0"><ScoreView project={sheetProject} loop={loop} onEditArpeggio={editArpeggio} /></div>
+              {showInst && !singerView && (
                 <>
                   <div className="h-1 -mb-0.5 cursor-row-resize hover:bg-accent/40 z-10" onMouseDown={dragInst} />
                   <div className="shrink-0 border-t border-line bg-panel/40" style={{ height: instH }}><InstrumentPanel project={p} /></div>
@@ -278,7 +288,7 @@ export default function Studio({ projectId }: { projectId: string }) {
           ) : !hasParts ? (
             <EmptyStudio project={p} running={!!job || !!installJob} onTranscribe={startTranscription} onEditRhythm={setRhythmField} />
           ) : null}
-          {hasParts && <VocalWords project={p} expanded={singerView} />}
+          {hasParts && lyricsMode && <VocalWords project={p} />}
           {hasParts && p.audio && <div className="shrink-0 border-t border-line px-4 py-1 bg-panel/30"><Waveform project={p} height={34} /></div>}
         </section>
       </div>

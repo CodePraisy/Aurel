@@ -4,6 +4,8 @@ import { renderScore, playbackWaypoints, playbackX, xForTick, systemForMeasure, 
 import { measureTicks, isFretted, midiName } from '@/music/theory'
 import { diatonicShift } from '@/music/score'
 import { PPQ } from '@shared/types'
+import { lyricRows, lyricTiming } from '@/music/lyrics'
+import VocalWords from './VocalWords'
 import { useProject } from '@/store/project'
 import { useApp } from '@/store/app'
 import { player } from '@/audio/player'
@@ -71,13 +73,21 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
   const notationKey = useMemo(() => {
     const sc = project.score
     return JSON.stringify([sc.title, sc.composer, sc.tempo, sc.timeSig, sc.keyFifths,
-      parts.map((p) => [p.id, p.name, p.kind, p.clef, p.group, p.tuning, p.capo, identity(p.measures)])])
+      parts.map((p) => [p.id, p.name, p.kind, p.clef, p.group, p.tuning, p.capo, identity(p.measures)]),
+      project.score.parts.find((p) => p.kind === 'singer')?.lyrics, project.audio?.offset, project.audio?.tempoLinked, project.audio?.referenceTempo])
   }, [project.score, parts])
   useLayoutEffect(() => {
     if (!svgHost.current || width < 100) return
     const t0 = performance.now()
     const { score, parts: shown } = latest.current
-    const l = renderScore(svgHost.current, score, { parts: shown, mode, width: width - 48, zoom, colors: themeColors(), header: true })
+    const timing = lyricTiming(project)
+    const words = score.parts.find((p) => p.kind === 'singer')?.lyrics?.words ?? []
+    const l = renderScore(svgHost.current, score, { parts: shown, mode, width: width - 48, zoom, colors: themeColors(), header: true,
+      systemFooter: (first, last, available) => {
+        const rowWords = words.filter((w) => timing.toTick(w.start) >= first * mt && timing.toTick(w.start) < (last + 1) * mt)
+        return rowWords.length ? (lyricRows(rowWords, available) + 1) * 28 : 0
+      }
+    })
     setLayout(l)
     if (performance.now() - t0 > 400) console.info(`score render ${Math.round(performance.now() - t0)}ms`)
   }, [notationKey, mode, zoom, width, theme])
@@ -364,6 +374,7 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
               <div ref={playhead} className={cx('absolute left-0 top-0 pointer-events-none', cursorStyle === 'band' ? 'rounded-md bg-gradient-to-b from-accent/0 via-accent/30 to-accent/0 border-x border-accent/40' : 'rounded bg-accent shadow-[0_0_12px_rgb(var(--accent))]')} style={{ display: 'none', willChange: 'transform' }} />
             </div>
           </div>
+          {layout && <VocalWords project={project} layout={layout} />}
         </div>
       </div>
     </div>
