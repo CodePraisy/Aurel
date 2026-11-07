@@ -228,6 +228,10 @@ function registerIpc(): void {
     const r = await dialog.showOpenDialog(main!, { properties: ['openFile'], filters: [{ name: 'Audio & video', extensions: AUDIO_EXT }, { name: 'All files', extensions: ['*'] }] })
     return r.canceled ? null : r.filePaths[0]
   })
+  h('media:pickModel', async () => {
+    const r = await dialog.showOpenDialog(main!, { title: 'Choose a fine-tuned note model', properties: ['openFile'], filters: [{ name: 'PyTorch checkpoint', extensions: ['pt', 'pth', 'ckpt'] }] })
+    return r.canceled ? null : r.filePaths[0]
+  })
   h('media:pickMidi', async () => {
     const r = await dialog.showOpenDialog(main!, { properties: ['openFile'], filters: [{ name: 'MIDI', extensions: ['mid', 'midi'] }] })
     if (r.canceled || !r.filePaths[0]) return null

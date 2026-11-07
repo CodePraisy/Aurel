@@ -18,6 +18,19 @@ export function durInfo(ticks: number): { base: number; dotted: boolean } | null
   return d ? { base: d.base, dotted: d.dotted } : null
 }
 
+/** Triplet values: three of them fill the time of two of the written value. */
+export const TRIPLET_DURS = [PPQ / 3, PPQ / 6] // triplet eighth, triplet 16th
+
+/** Written value of a triplet duration (a triplet eighth is written as an eighth), or null. */
+export function tripletBase(ticks: number): number | null {
+  return TRIPLET_DURS.includes(ticks) ? (ticks * 3) / 2 : null
+}
+
+/** True when a position or length can only be written with triplets. */
+export function offBinaryGrid(ticks: number): boolean {
+  return ticks % (PPQ / 8) !== 0
+}
+
 export function measureTicks(ts: { num: number; den: number }): number {
   return Math.round(ts.num * (WHOLE / ts.den))
 }
@@ -33,6 +46,32 @@ export function beatTicks(ts: { num: number; den: number }): number {
  * grid so rests/notes read naturally (e.g. no half note starting off-beat).
  */
 export function decompose(start: number, length: number, allowDotted = true): number[] {
+  // a span that starts or ends between the binary grid lines is written with triplets in the beats
+  // where it does, and with ordinary values in between
+  const end = start + length
+  if (length > 0 && (offBinaryGrid(start) || offBinaryGrid(end))) {
+    const first = offBinaryGrid(start) ? Math.min(end, Math.ceil(start / PPQ) * PPQ) : start
+    const last = offBinaryGrid(end) ? Math.max(first, Math.floor(end / PPQ) * PPQ) : end
+    return [...tripletUnits(start, first - start), ...(last > first ? binaryDecompose(first, last - first, allowDotted) : []), ...tripletUnits(last, end - last)]
+  }
+  return binaryDecompose(start, length, allowDotted)
+}
+
+function tripletUnits(start: number, length: number): number[] {
+  const out: number[] = []
+  let pos = start
+  let left = length
+  let guard = 0
+  while (left > 0 && guard++ < 64) {
+    const u = TRIPLET_DURS.find((d) => d <= left && pos % d === 0) ?? left
+    out.push(u)
+    pos += u
+    left -= u
+  }
+  return out
+}
+
+function binaryDecompose(start: number, length: number, allowDotted: boolean): number[] {
   const out: number[] = []
   let pos = start
   let left = length

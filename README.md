@@ -4,14 +4,14 @@
 
 Aurel separates a recording into instrument stems (vocals, drums, bass, guitar, piano, other) and transcribes each stem into standard notation and guitar tablature. It also gives you a synchronized practice player, a full score editor, and real-time hosting for VST3 instruments and effects on Windows. Projects, audio and AI processing all stay on your machine.
 
-## Download — v0.5.0
+## Download — v0.6.0
 
-- [`Aurel-0.5.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.5.0/Aurel-0.5.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
-- [`Aurel-0.5.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.5.0/Aurel-0.5.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
-- [`Aurel-0.5.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.5.0/Aurel-0.5.0-macOS-arm64.zip) (Mac with Apple silicon)
-- [`Aurel-0.5.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.5.0/Aurel-0.5.0-macOS-x64.zip) (Mac with an Intel processor)
+- [`Aurel-0.6.0-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.6.0/Aurel-0.6.0-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
+- [`Aurel-0.6.0-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.6.0/Aurel-0.6.0-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
+- [`Aurel-0.6.0-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.6.0/Aurel-0.6.0-macOS-arm64.zip) (Mac with Apple silicon)
+- [`Aurel-0.6.0-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.6.0/Aurel-0.6.0-macOS-x64.zip) (Mac with an Intel processor)
 
-[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.5.0)
+[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.6.0)
 
 To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: Apple M…** means Apple silicon. **Processor: Intel** means Intel.
 
@@ -25,14 +25,14 @@ To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: A
 
 ### Windows (installer)
 
-1. Download `Aurel-0.5.0-Windows-x64.exe` and run it.
+1. Download `Aurel-0.6.0-Windows-x64.exe` and run it.
 2. If Microsoft Defender SmartScreen shows **"Windows protected your PC"**, select **More info → Run anyway**. The warning appears because the build is not yet code-signed.
 3. Complete the setup wizard; the defaults are fine. During installation, the AI transcription engine is downloaded and configured (one-time, 3–5 GB), so an internet connection is required. If this step is interrupted, Aurel still installs, and you can finish later from **Settings → AI Engine**.
 4. Launch **Aurel** from the Start menu or the desktop shortcut.
 
 ### Windows (portable)
 
-Download `Aurel-0.5.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
+Download `Aurel-0.6.0-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
 
 ### macOS
 
@@ -54,7 +54,7 @@ Download `Aurel-0.5.0-Windows-x64-Portable.exe` and run it from any folder or a 
 ## Features
 
 - **Import:** MP3, WAV, FLAC, M4A, OGG and video files, by drag-and-drop or file picker. You can also import from a YouTube link, a direct URL, or a MIDI file.
-- **Transcription:** separates the instruments, finds every beat and bar line, and uses a model made for each instrument (piano and guitar, bass, singing, drums). Notes are written on the band's own beat, with the simplest rhythm that fits. Choose Fast, Balanced or Best, and how many notes to keep, in **Settings → Transcription**.
+- **Transcription:** separates the instruments (BS-RoFormer on an NVIDIA GPU, Demucs otherwise), finds every beat and bar line, and uses a model made for each instrument (piano and guitar, bass, singing, drums). The parts are checked against each other, chord symbols and the key are found, and notes are written on the band's own beat with the simplest rhythm that fits, including triplets, strum directions, bends, slides and vibrato. Choose Fast, Balanced or Best, and how many notes to keep, in **Settings → Transcription**.
 - **Practice:** speed from 25% to 200% with pitch preserved, saved loops, a gradual tempo trainer, metronome and count-in, transposition, a follow-along cursor, and an **Original / Transcription** playback switch.
 - **Notation editor:** multi-part scores, tab, drum step grid, chords with adjustable arpeggio direction and spacing, articulations and techniques, alternate tunings and capo, and 200-step undo. Enter notes with the keyboard, the mouse, an on-screen piano or fretboard, or a USB MIDI keyboard.
 - **Sound:** sampled instruments with a per-part effects chain. You can add instruments made from your own samples and use them in any part, or in place of a built-in sound. On Windows, installed VST3 instruments and effects (for example Kontakt or Guitar Rig) run in real time with their native editors.
@@ -66,6 +66,24 @@ Download `Aurel-0.5.0-Windows-x64-Portable.exe` and run it from any folder or a 
 - **Updates:** Aurel checks for a new release at startup and asks before installing. To check manually or turn off automatic checks, open **Settings → About & limits**.
 
 ---
+
+## What’s new in v0.6.0
+
+Better models, models that work together, and a nicer studio.
+
+- **BS-RoFormer separation** on NVIDIA GPUs: the six-instrument RoFormer splits bass and drums about 4–5 dB more cleanly than Demucs on our real test song (bass 14.0 vs 9.8 dB SDR, drums 14.3 vs 9.6). Demucs stays the default on the processor, where RoFormer is about 18× slower. Choose in **Settings → Transcription → Instrument separation**.
+- **The parts check each other:** a note that another instrument's stem also has, and plays much louder, is that instrument leaking through the separation and is removed (__BLEED__ on real Bach chorales).
+- **Chord symbols and the key:** chords are found beat by beat from every part and printed over the score, shown live in the transport while you play, and exported to MusicXML. The key signature now comes from the chords (right in 7 of 8 test songs, up from 4). Chord roots were right in every test bar.
+- **Triplets** are written where a beat is clearly played in three (and exported to MusicXML).
+- **Strum arrows** (down or up) over guitar chords, and **bends, vibrato, slides and hammer-ons** found on single-note guitar and bass lines.
+- **__CLEAN__**
+- **Lyrics:** Whisper Medium and Large v3 Turbo, Whisper on the GPU when there is one, and no words invented over long instrumental passages.
+- **Train your own note model** on an RTX 3050 (6 GB) or better with `tools/train` (see its README), and use it in **Settings → Transcription → Custom note model**.
+- **Arrow keys work everywhere:** they move between cards, buttons and rows on every page, and in the studio they move the note cursor even right after you touched a slider or a picker, before anything is selected, and across empty bars. Keyboard focus is now visible.
+- **Studio look:** instrument colours, glowing selection, a paper-like score, a glassy transport with the current chord, the played part of the waveform highlighted, and small animations throughout, in all three themes.
+- **New settings:** instrument separation, bleed removal, chords and key, chord-aware clean-up, triplets, playing techniques, strum arrows, chord symbols, custom note model, two larger lyrics models.
+- **Fixes:** the waveform playhead could appear outside the waveform; the arrow keys stopped working after using a slider, picker or empty bar; the 6-instrument separation model downloaded on the first transcription instead of during setup.
+- **Tested on real music** with known scores: Bach10 (real recordings of four players) and the open AlpacaGuitarSet songs. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## What’s new in v0.5.0
 
@@ -144,11 +162,12 @@ On Windows, opening a VST3 effect editor from Studio keeps playback running and 
 
 ### Transcription
 
-1. **Separation.** Demucs splits the recording into vocals, drums, bass and the rest, or six sources (adding guitar and piano) when you ask for those. **Best** quality runs both and keeps the cleanest of each.
+1. **Separation.** On an NVIDIA GPU, BS-RoFormer splits the recording into vocals, drums, bass, guitar, piano and the rest. On the processor, Demucs does it (six sources, or four when guitar and piano aren't wanted); **Best** runs two Demucs models and keeps the cleanest of each.
 2. **Beats.** Beat This! finds every beat and downbeat in the full mix, even in songs without drums. The meter (3/4, 4/4, 6/8, 12/8), the tempo of every bar and any swing come from it.
 3. **Notes.** Transkun (piano and guitar), CREPE (bass and singing) and ADTOF (drums) each handle the part they are best at. A clean-up pass removes notes outside the instrument's range, blips, and quiet bleed from other instruments, and pulls each strummed chord onto one start.
-4. **Words.** Whisper recognises the singer's words, and each word is moved onto the sung note it belongs to.
-5. **Notation.** Every note is placed on the beat grid. Each beat gets the simplest rhythm that explains it, short gaps are held over, and the score gets a tempo change wherever the band drifts, so it stays in sync with the recording.
+4. **The parts together.** A note one stem shares with a louder stem is removed as bleed; chords and the key come from all parts; weak notes outside the chords go; strum direction and playing techniques are marked.
+5. **Words.** Whisper recognises the singer's words, and each word is moved onto the sung note it belongs to.
+6. **Notation.** Every note is placed on the beat grid. Each beat gets the simplest rhythm that explains it, short gaps are held over, and the score gets a tempo change wherever the band drifts, so it stays in sync with the recording.
 
 Everything runs on your computer, on an NVIDIA graphics card when there is one.
 
@@ -160,7 +179,8 @@ What to expect:
 | Clean or acoustic guitar chords | Usable chords, with a few extra or missing inner notes |
 | Distorted guitar, dense mixes, heavy reverb | Recognisable, still needs correcting |
 | Drums | Kick, snare and hi-hat very reliable; toms and cymbals mostly right; ghost notes often missed |
-| Rhythm | Follows the band's tempo bar by bar; triplets inside a straight beat are rounded to 16ths |
+| Rhythm | Follows the band's tempo bar by bar; triplets are written where a beat is clearly in three |
+| Chords and key | Chord roots right in every test bar; the quality (major, minor, 7th) in about 9 of 10 |
 
 **Settings → Transcription** sets the quality, how many notes to keep, rhythm detail, the tempo mode, the drum model and the lyrics model and language. The ADTOF drum model is licensed for non-commercial use; **Basic** drums use band filters instead. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how quality was measured.
 

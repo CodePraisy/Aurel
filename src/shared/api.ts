@@ -31,6 +31,7 @@ export interface AurelApi {
   media: {
     pickAudio(): Promise<string | null>
     pickMidi(): Promise<{ name: string; data: ArrayBuffer } | null>
+    pickModel(): Promise<string | null>
     importAudio(path: string, opts?: { allowDuplicate?: boolean }): Promise<{ jobId: string }>
     importUrl(url: string): Promise<{ jobId: string }>
     analyzeRhythm(id: string): Promise<RhythmEstimate | null>

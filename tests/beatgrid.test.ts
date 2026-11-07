@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { PPQ, type EngineGrid } from '@shared/types'
 import { chooseDivisions, quantizeOnGrid, tempoPlan, unswing, DEFAULT_RHYTHM } from '@/music/beatgrid'
 import { analysisToScore, DEFAULT_TRANSCRIBE } from '@/music/quantize'
+import { decompose } from '@/music/theory'
 import { placeLyrics } from '@/music/lyrics'
 
 const steady = (bpm: number, beats: number, start = 0): number[] => Array.from({ length: beats + 1 }, (_, i) => start + (i * 60) / bpm)
@@ -77,5 +78,67 @@ describe('lyrics under their notes', () => {
     expect(placed[1]).toEqual({ x: 54, line: 0 })
     expect(placed[2].line).toBe(1)
     expect(placed[2].x).toBe(45)
+  })
+})
+
+describe('triplets', () => {
+  it('writes a beat of triplets as triplets, but keeps sloppy sixteenths as sixteenths', () => {
+    const d = chooseDivisions(new Map([[0, [0, 0.34, 0.65]], [1, [0, 0.27, 0.49, 0.73]], [2, [0.02, 0.31]]]), [1, 2, 4], [3])
+    expect(d.get(0)).toBe(3)
+    expect(d.get(1)).toBe(4)
+    expect(d.get(2)).not.toBe(3) // a lone note late in the beat is a late 16th, not a triplet
+  })
+
+  it('triplet notes become triplet eighths that fill the beat', () => {
+    const notes = [0, 0.33, 0.67, 1, 2].map((b, i) => ({ b: b + (i % 2 ? 0.01 : -0.01), be: b + 0.3, p: 64, v: 90 }))
+    const { score } = analysisToScore({ engine: 3, tempo: 100, beatOffset: 0, device: 'cpu', timeSig: { num: 4, den: 4 }, grid: grid(steady(100, 8)),
+      stems: [{ name: 'other', file: 'x.wav', kind: 'strings', confidence: 1 }], notes: { other: notes.map((n) => ({ ...n, s: n.b * 0.6, e: n.be * 0.6 })) } }, 'T', '', { num: 4, den: 4 }, undefined, true, DEFAULT_TRANSCRIBE)
+    const evs = score.parts[0].measures[0].events
+    expect(evs.slice(0, 3).map((e) => [e.start, e.dur])).toEqual([[0, PPQ / 3], [PPQ / 3, PPQ / 3], [(2 * PPQ) / 3, PPQ / 3]])
+    expect(evs[3].start).toBe(PPQ)
+    expect(evs.reduce((t, e) => t + e.dur, 0)).toBe(4 * PPQ)
+  })
+
+  it('splits a span that ends on a triplet into ordinary values, then triplets', () => {
+    expect(decompose(0, PPQ * 2 + PPQ / 3)).toEqual([PPQ * 2, PPQ / 3])
+    expect(decompose(PPQ / 3, PPQ * 2 - PPQ / 3)).toEqual([PPQ / 3, PPQ / 3, PPQ])
+  })
+
+  it('carries chord symbols and the engine key into the score', () => {
+    const a = {
+      engine: 3, tempo: 120, beatOffset: 0, device: 'cpu', timeSig: { num: 4, den: 4 }, grid: grid(steady(120, 8)),
+      stems: [{ name: 'guitar', file: 'g.wav', kind: 'clean-guitar' as const, confidence: 1 }],
+      notes: { guitar: [{ s: 0, e: 1, p: 55, v: 80, b: 0, be: 2, strum: 'down' as const }, { s: 0, e: 1, p: 59, v: 80, b: 0, be: 2 }, { s: 0, e: 1, p: 62, v: 80, b: 0, be: 2 }] },
+      chords: [{ b: 0, be: 4, s: 0, e: 2, name: 'G' }, { b: 6, be: 8, s: 3, e: 4, name: 'Em' }],
+      key: { tonic: 7, mode: 'major', name: 'G major', fifths: 1, confidence: 0.8 }
+    }
+    const { score } = analysisToScore(a, 'T', '', { num: 4, den: 4 }, undefined, true, DEFAULT_TRANSCRIBE)
+    expect(score.keyFifths).toBe(1)
+    expect(score.chords).toEqual([{ measure: 0, tick: 0, name: 'G' }, { measure: 1, tick: 2 * PPQ, name: 'Em' }])
+    expect(score.parts[0].measures[0].events[0].strum).toBe('down')
+  })
+})
+
+describe('MusicXML for the new notation', () => {
+  it('writes chord symbols as <harmony> and triplets with <time-modification>', async () => {
+    const { harmonyXml, scoreToMusicXml } = await import('@/music/musicxml')
+    expect(harmonyXml('Bbm')).toContain('<root-step>B</root-step><root-alter>-1</root-alter></root><kind text="m">minor</kind>')
+    expect(harmonyXml('G/B')).toContain('<bass><bass-step>B</bass-step></bass>')
+    const notes = [0, 0.33, 0.67, 1].map((b) => ({ b, be: b + 0.3, p: 64, v: 90, s: b * 0.6, e: (b + 0.3) * 0.6 }))
+    const { score } = analysisToScore({ engine: 3, tempo: 100, beatOffset: 0, device: 'cpu', timeSig: { num: 4, den: 4 }, grid: grid(steady(100, 8)),
+      stems: [{ name: 'other', file: 'x.wav', kind: 'strings', confidence: 1 }], notes: { other: notes }, chords: [{ b: 0, be: 4, s: 0, e: 2.4, name: 'Em' }] }, 'T', '', { num: 4, den: 4 }, undefined, true, DEFAULT_TRANSCRIBE)
+    const xml = scoreToMusicXml(score)
+    expect(xml).toContain('<time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>')
+    expect(xml).toContain('<root-step>E</root-step>')
+  })
+})
+
+describe('chord boxes', () => {
+  it('uses open shapes where they exist and barre shapes elsewhere', async () => {
+    const { guitarShape } = await import('@/components/ChordDiagram')
+    expect(guitarShape('G')!.frets).toEqual([3, 2, 0, 0, 0, 3])
+    expect(guitarShape('F')!.frets).toEqual([1, 3, 3, 2, 1, 1]) // E-shape barre at 1
+    expect(guitarShape('Bbm')!.frets).toEqual([null, 1, 3, 3, 2, 1]) // A-shape barre at 1
+    expect(guitarShape('C#m7')!.base).toBe(4)
   })
 })

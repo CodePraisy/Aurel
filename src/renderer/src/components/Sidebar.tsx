@@ -121,7 +121,8 @@ export default function Sidebar({ version, checking, onCheckUpdates }: { version
   return (
     <nav aria-label="Main menu" data-keyboard-menu="" onKeyDown={(event) => {
       const entries = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), [role="button"][tabindex="0"]'))
-      moveMenuFocus(event, entries.filter((entry) => entry.getClientRects().length > 0))
+      // up and down move through the menu; left and right go on to the page (spatial navigation)
+      moveMenuFocus(event, entries.filter((entry) => entry.getClientRects().length > 0), false)
     }} className={cx('sidebar relative z-20 shrink-0 flex flex-col pt-3 pb-2 drag transition-[width] duration-300 ease-out', open ? 'w-[228px] px-2.5' : 'w-[64px] px-3 items-center')}>
       <div className={cx('flex items-center gap-2.5 mb-4 no-drag', open ? 'px-1.5' : 'justify-center')}>
         <div className="logo-chip h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-accent" title="Aurel"><Logo /></div>

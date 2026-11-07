@@ -9,8 +9,8 @@ import { cx, Toggle } from '@/components/ui'
 
 const QUALITIES: { k: TranscribeQuality; label: string; icon: typeof Zap; time: string; text: string }[] = [
   { k: 'fast', label: 'Fast', icon: Zap, time: '≈ 1× song length on a CPU', text: 'Quick separation and one general note model. Good for a first listen.' },
-  { k: 'balanced', label: 'Balanced', icon: Gauge, time: '≈ 2–3× on a CPU, seconds on a GPU', text: 'A model for each instrument: Transkun for piano and guitar, CREPE for bass and voice, ADTOF for drums.' },
-  { k: 'best', label: 'Best', icon: Sparkles, time: '≈ 4–6× on a CPU', text: 'Everything in Balanced, with extra separation passes for cleaner stems.' }
+  { k: 'balanced', label: 'Balanced', icon: Gauge, time: '≈ 2–3× on a CPU, seconds on a GPU', text: 'A model for each instrument (Transkun, CREPE, ADTOF), checked against each other, with chords and key. BS-RoFormer separation on an NVIDIA GPU.' },
+  { k: 'best', label: 'Best', icon: Sparkles, time: '≈ 4–6× on a CPU', text: 'Everything in Balanced, with extra separation passes (BS-RoFormer with more overlap on a GPU, two Demucs models on a CPU).' }
 ]
 
 const LANGUAGES = [['', 'Detect automatically'], ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh', 'Chinese'], ['ru', 'Russian'], ['ar', 'Arabic'], ['hi', 'Hindi'], ['yo', 'Yoruba'], ['ig', 'Igbo'], ['sw', 'Swahili']]
@@ -68,7 +68,7 @@ export default function TranscriptionSection({ s, set }: { s: Settings; set: (p:
       {engine?.ready && !engine.upgraded && (
         <div className="card p-4 mb-5 flex items-center gap-3 upgrade-card">
           <Sparkles size={18} className="text-accent shrink-0" />
-          <div className="flex-1 text-[13px] leading-relaxed"><b>New transcription models are available.</b> Better piano, guitar, bass, singing and drum notes and a much better beat and bar finder (about 300 MB, once).</div>
+          <div className="flex-1 text-[13px] leading-relaxed"><b>New transcription models are available.</b> Per-instrument note models, a much better beat and bar finder and BS-RoFormer separation support (a few hundred MB, once; the 700 MB BS-RoFormer weights come later, only if they are used).</div>
           <button className="btn-primary" disabled={installing} onClick={async () => { const { jobId } = await api.engine.install(); track(jobId, 'Adding the new transcription models') }}>
             {installing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Install
           </button>
@@ -95,6 +95,13 @@ export default function TranscriptionSection({ s, set }: { s: Settings; set: (p:
         <SettingRow id="sensitivity" title="Note sensitivity" desc="Lower keeps only notes the models are sure of. Higher catches soft notes, with more extras to delete.">
           <Sensitivity value={s.noteSensitivity ?? 0.5} onChange={(v) => set({ noteSensitivity: v })} />
         </SettingRow>
+        <SettingRow id="separator" title="Instrument separation" desc={(s.separator ?? 'auto') === 'auto' ? `Automatic: BS-RoFormer on an NVIDIA GPU${engine?.cuda ? ' (yours)' : ''}, Demucs on the processor.` : s.separator === 'roformer' ? 'BS-RoFormer: several dB cleaner guitar, piano, bass and drums than Demucs. 700 MB download; slow without an NVIDIA GPU.' : 'HT-Demucs: fast everywhere, good on vocals, bass and drums.'}>
+          <div className="seg">{([['auto', 'Automatic'], ['roformer', 'BS-RoFormer'], ['demucs', 'Demucs']] as const).map(([k, l]) => <button key={k} className={cx((s.separator ?? 'auto') === k && 'on')} onClick={() => set({ separator: k })}>{l}</button>)}</div>
+        </SettingRow>
+        <SettingRow id="bleedCheck" title="Remove notes heard from other instruments" desc="Separation leaves a little of each instrument in the others. A note that sounds much louder in another part is taken out of this one."><Toggle ariaLabel="Remove notes heard from other instruments" on={s.bleedCheck ?? true} onChange={(v) => set({ bleedCheck: v })} /></SettingRow>
+        <SettingRow id="chordSymbols" title="Find chords and the key" desc="Chord symbols over the score and the key signature, worked out from every part together."><Toggle ariaLabel="Find chords and the key" on={s.chordSymbols ?? true} onChange={(v) => set({ chordSymbols: v })} /></SettingRow>
+        <SettingRow id="chordCleanup" title="Chord-aware clean-up" desc="Quiet, short notes that fit neither the chord being played nor the next one are removed as mistakes."><Toggle ariaLabel="Chord-aware clean-up" on={s.chordCleanup ?? true} disabled={s.chordSymbols === false} onChange={(v) => set({ chordCleanup: v })} /></SettingRow>
+        <SettingRow id="detectTechniques" title="Playing techniques" desc="Bends (with how far), vibrato, slides and hammer-ons on single-note guitar and bass lines, from the pitch of the recording."><Toggle ariaLabel="Playing techniques" on={s.detectTechniques ?? true} onChange={(v) => set({ detectTechniques: v })} /></SettingRow>
         <SettingRow id="drumModel" title="Drum transcription" desc={s.drumModel === 'basic' ? 'Kick, snare and hi-hat from frequency bands.' : 'ADTOF finds kick, snare, toms, hi-hat and cymbals. Its model is licensed for non-commercial use.'}>
           <div className="seg">{([['adtof', 'Advanced'], ['basic', 'Basic']] as const).map(([k, l]) => <button key={k} className={cx((s.drumModel ?? 'adtof') === k && 'on')} onClick={() => set({ drumModel: k })}>{l}</button>)}</div>
         </SettingRow>
@@ -111,6 +118,7 @@ export default function TranscriptionSection({ s, set }: { s: Settings; set: (p:
         <SettingRow id="followTempo" title="Tempo" desc="Follow the recording adds a tempo change wherever the band speeds up or slows down, so the score stays in sync with the audio.">
           <div className="seg">{([[true, 'Follow the recording'], [false, 'One tempo']] as const).map(([k, l]) => <button key={String(k)} className={cx((s.followTempo ?? true) === k && 'on')} onClick={() => set({ followTempo: k })}>{l}</button>)}</div>
         </SettingRow>
+        <SettingRow id="triplets" title="Triplets" desc="Write a beat as triplets where the notes clearly split it in three (in 2/4, 3/4 and 4/4)."><Toggle ariaLabel="Triplets" on={s.triplets ?? true} onChange={(v) => set({ triplets: v })} /></SettingRow>
         <SettingRow id="chordLimit" title="Notes per guitar chord" desc="The most notes kept in one guitar chord (the loudest win).">
           <div className="seg">{[3, 4, 5, 6].map((k) => <button key={k} className={cx((s.guitarChordLimit ?? 6) === k && 'on')} onClick={() => set({ guitarChordLimit: k })}>{k}</button>)}</div>
         </SettingRow>
@@ -121,11 +129,21 @@ export default function TranscriptionSection({ s, set }: { s: Settings; set: (p:
       <div className="card px-5 py-1 mb-5">
         <SettingRow id="lyricWords" title="Recognise the singer’s words" desc="Whisper listens to the isolated voice. Each word is moved onto the note it is sung on."><Toggle ariaLabel="Recognise the singer’s words" on={s.lyricWords ?? true} onChange={(v) => set({ lyricWords: v })} /></SettingRow>
         <SettingRow id="vocalMelody" title="Write the singer’s melody" desc="Put the sung notes on the Singer staff, with the words under them."><Toggle ariaLabel="Write the singer’s melody" on={s.vocalMelody ?? false} onChange={(v) => set({ vocalMelody: v })} /></SettingRow>
-        <SettingRow id="lyricsModel" title="Word recognition model" desc="Small recognises sung words noticeably better but downloads 460 MB and takes longer.">
-          <div className="seg">{([['base', 'Base'], ['small', 'Small']] as const).map(([k, l]) => <button key={k} disabled={s.lyricWords === false} className={cx((s.lyricsModel ?? 'base') === k && 'on')} onClick={() => set({ lyricsModel: k })}>{l}</button>)}</div>
+        <SettingRow id="lyricsModel" title="Word recognition model" desc={({ base: 'Base: quick, 140 MB.', small: 'Small: noticeably better on sung words, 460 MB.', medium: 'Medium: better again, 1.5 GB; slow without a GPU.', turbo: 'Large v3 Turbo: the most accurate, 1.6 GB; best with an NVIDIA GPU.' } as Record<string, string>)[s.lyricsModel ?? 'base']}>
+          <div className="seg">{([['base', 'Base'], ['small', 'Small'], ['medium', 'Medium'], ['turbo', 'Turbo']] as const).map(([k, l]) => <button key={k} disabled={s.lyricWords === false} className={cx((s.lyricsModel ?? 'base') === k && 'on')} onClick={() => set({ lyricsModel: k })}>{l}</button>)}</div>
         </SettingRow>
         <SettingRow id="lyricsLanguage" title="Lyrics language" desc="Telling Whisper the language avoids it guessing wrong on short songs.">
           <Select width={210} value={s.lyricsLanguage ?? ''} onChange={(v) => set({ lyricsLanguage: v })} options={LANGUAGES.map(([value, label]) => ({ value, label }))} />
+        </SettingRow>
+      </div>
+
+      <h3 className="font-display text-[18px] mb-2">Your own models</h3>
+      <div className="card px-5 py-1 mb-5">
+        <SettingRow id="customNoteModel" title="Custom note model" desc={s.customNoteModel ? `Guitar and piano notes come from ${s.customNoteModel.split(/[\\/]/).pop()}.` : 'A Transkun checkpoint you fine-tuned with tools/train (see its README). Used for guitar and piano.'}>
+          <div className="flex items-center gap-2">
+            {s.customNoteModel && <button className="btn-ghost" onClick={() => set({ customNoteModel: '' })}>Use built-in</button>}
+            <button className="btn-soft" onClick={async () => { const f = await api.media.pickModel(); if (f) set({ customNoteModel: f }) }}>Choose…</button>
+          </div>
         </SettingRow>
       </div>
 

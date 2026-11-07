@@ -3,10 +3,12 @@ import type { Project } from '@shared/types'
 import { api } from '@/lib/api'
 import { player } from '@/audio/player'
 import { tempoMap } from '@/music/score'
+import { cx } from '@/components/ui'
 
 export default function Waveform({ project, height = 120 }: { project: Project; height?: number }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const head = useRef<HTMLDivElement>(null)
+  const played = useRef<HTMLDivElement>(null)
   const [peaks, setPeaks] = useState<number[] | null>(null)
   const dur = project.audio?.duration ?? 0
   useEffect(() => { void api.media.peaks(project.id).then(setPeaks) }, [project.id, project.audio?.trimmed])
@@ -41,8 +43,11 @@ export default function Waveform({ project, height = 120 }: { project: Project; 
     const tm = tempoMap(project.score, 1)
     const f = () => {
       if (head.current && dur) {
-        const sec = (project.audio?.offset ?? 0) + tm.tickToSec(player.getTick()) * player.audioScale
-        head.current.style.left = `${Math.min(100, (sec / dur) * 100)}%`
+        const sec = (project.audio?.offset ?? 0) + tm.tickToSec(Math.max(0, player.getTick())) * player.audioScale
+        // never outside the strip (a count-in or an unloaded player can give a time before the start)
+        const pct = Math.max(0, Math.min(100, (sec / dur) * 100))
+        head.current.style.left = `${pct}%`
+        if (played.current) played.current.style.width = `${pct}%`
       }
       raf = requestAnimationFrame(f)
     }
@@ -57,10 +62,11 @@ export default function Waveform({ project, height = 120 }: { project: Project; 
   }
 
   return (
-    <div className="relative w-full cursor-pointer" style={{ height }} onClick={seek}>
+    <div className="waveform relative w-full cursor-pointer overflow-hidden rounded-md" style={{ height }} onClick={seek}>
       <canvas ref={canvas} className="w-full h-full" />
+      <div ref={played} className="waveform-played absolute inset-y-0 left-0 pointer-events-none" />
       {!peaks && <div className="absolute inset-0 flex items-center justify-center text-faint text-[12px]">Loading waveform…</div>}
-      <div ref={head} className="absolute top-0 bottom-0 w-[2px] bg-fg shadow-[0_0_8px_rgb(var(--fg)/0.5)]" />
+      <div ref={head} className={cx('absolute top-0 bottom-0 -ml-px w-[2px] bg-fg shadow-[0_0_8px_rgb(var(--fg)/0.5)] transition-opacity', !peaks && 'opacity-0')} />
     </div>
   )
 }

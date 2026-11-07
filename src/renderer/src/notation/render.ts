@@ -1,11 +1,11 @@
 import {
   Renderer, Stave, TabStave, StaveNote, TabNote, Voice, Formatter, Beam, Accidental, Dot, Articulation, Annotation,
-  StaveTie, StaveConnector, GhostNote, Bend, Vibrato, TabTie, TabSlide, Fraction, Modifier, Stroke,
+  StaveTie, StaveConnector, GhostNote, Bend, Vibrato, TabTie, TabSlide, Fraction, Modifier, Stroke, Tuplet,
   type RenderContext, type StemmableNote, type Tickable
 } from 'vexflow'
 import type { NoteEvent, Part, Score, ViewMode } from '@shared/types'
 import { PPQ } from '@shared/types'
-import { durInfo, INSTRUMENTS, isFretted, spell, keyAccidentals, letterIndex, drumPiece, KEY_NAMES, WHOLE } from '@/music/theory'
+import { durInfo, tripletBase, INSTRUMENTS, isFretted, spell, keyAccidentals, letterIndex, drumPiece, KEY_NAMES, WHOLE } from '@/music/theory'
 import { assignTab, tuningOf, type TabPos } from '@/music/tab'
 
 export interface Colors { ink: string; paper: string; staff: string; faint: string; accent: string }
@@ -39,6 +39,18 @@ export interface RenderOptions {
   header?: boolean
   split?: boolean // one SVG per system (print: lets pages break between systems)
   systemFooter?: (firstMeasure: number, lastMeasure: number, width: number) => number
+  /** chord symbols over the top staff */
+  chords?: boolean
+  /** strum arrows over guitar chords */
+  strums?: boolean
+}
+
+/** Written value of an event: ordinary and dotted values, or a triplet written as its base value. */
+function writtenDur(ticks: number): { base: number; dotted: boolean; triplet: boolean } {
+  const info = durInfo(ticks)
+  if (info) return { ...info, triplet: false }
+  const base = tripletBase(ticks)
+  return base ? { base, dotted: false, triplet: true } : { base: PPQ, dotted: false, triplet: false }
 }
 
 const DUR_CODE: Record<number, string> = { [WHOLE]: 'w', [WHOLE / 2]: 'h', [PPQ]: 'q', [PPQ / 2]: '8', [PPQ / 4]: '16', [PPQ / 8]: '32' }
@@ -63,9 +75,9 @@ function measureMinWidth(score: Score, parts: Part[], mi: number): number {
     if (!m) continue
     let pw = 0
     for (const e of m.events) {
-      const info = durInfo(e.dur)
-      const code = info ? DUR_CODE[info.base] : 'q'
-      pw += (MIN_W[code] ?? 26) + (info?.dotted ? 6 : 0) + (e.notes.length > 2 ? 4 : 0) + (e.arpeggio && e.notes.length > 1 ? 12 : 0)
+      const info = writtenDur(e.dur)
+      const code = DUR_CODE[info.base] ?? 'q'
+      pw += (MIN_W[code] ?? 26) + (info.dotted ? 6 : 0) + (e.notes.length > 2 ? 4 : 0) + (e.arpeggio && e.notes.length > 1 ? 12 : 0) + (e.strum ? 8 : 0)
     }
     w = Math.max(w, pw)
   }
@@ -125,7 +137,10 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
   const rowGap = (k: 'staff' | 'tab', prev: 'staff' | 'tab' | null, samePart: boolean) => (prev === null ? 0 : samePart ? 34 : k === 'tab' ? 40 : 48)
   const tabH = (p: Part) => (tuningOf(p).length - 1) * 13
   const headerH = o.header ? 90 : 18
-  const systemTop = 34
+  const chordsOn = o.chords !== false && !!score.chords?.length
+  const chordsByMeasure = new Map<number, { tick: number; name: string }[]>()
+  if (chordsOn) for (const c of score.chords!) (chordsByMeasure.get(c.measure) ?? chordsByMeasure.set(c.measure, []).get(c.measure)!).push(c)
+  const systemTop = chordsOn ? 50 : 34
   const systemBottom = 46
   let y = headerH
   const layoutSystems: SystemLayout[] = []
@@ -273,9 +288,10 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
         const measAcc = new Map<string, number>()
         const notes: Tickable[] = []
         const beamable: StemmableNote[] = []
+        const triplets = new Map<number, Tickable[]>() // beat -> the triplet notes in it
         const shift = INSTRUMENTS[part.kind].displayShift
         for (const e of m.events) {
-          const info = durInfo(e.dur) ?? { base: PPQ, dotted: false }
+          const info = writtenDur(e.dur)
           const code = DUR_CODE[info.base] ?? 'q'
           const dur = code + (info.dotted ? 'd' : '')
           let note: Tickable
@@ -288,8 +304,9 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
               const positions = pos.filter((p): p is TabPos => !!p).map((p) => ({ str: p.string, fret: e.tech?.includes('harmonic') ? `<${p.fret}>` : String(p.fret) }))
               const tn = new TabNote({ positions, duration: dur }, o.mode === 'tab')
               if (e.arpeggio && positions.length > 1 && o.mode === 'tab') tn.addModifier(new Stroke(e.arpeggio.direction === 'up' ? Stroke.Type.ROLL_UP : Stroke.Type.ROLL_DOWN, { all_voices: false }), 0)
+              else if (e.strum && o.strums !== false && positions.length > 1) tn.addModifier(new Stroke(e.strum === 'down' ? Stroke.Type.BRUSH_DOWN : Stroke.Type.BRUSH_UP, { all_voices: false }), 0)
               if (info.dotted && o.mode === 'tab') Dot.buildAndAttach([tn], { all: true })
-              if (e.tech?.includes('bend')) tn.addModifier(new Bend((e.bend ?? 2) >= 2 ? 'Full' : (e.bend ?? 2) === 1 ? '1/2' : `${e.bend}`), 0)
+              if (e.tech?.includes('bend')) { const b = e.bend ?? 2; tn.addModifier(new Bend(b >= 2 ? 'Full' : b === 1.5 ? '3/4' : b === 1 ? '1/2' : b === 0.5 ? '1/4' : `${b}`), 0) }
               if (e.tech?.includes('vibrato')) tn.addModifier(new Vibrato(), 0)
               if (e.tech?.includes('palmMute') && o.mode === 'tab') tn.addModifier(new Annotation('P.M.').setFont('Inter Variable', 9, 'normal').setVerticalJustification(Annotation.VerticalJustify.TOP), 0)
               const prevT = pendingTab.get(part.id)
@@ -332,6 +349,7 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
             }
             const sn = new StaveNote({ keys, duration: dur, clef: clefName(part), auto_stem: part.kind !== 'drums', stem_direction: part.kind === 'drums' ? 1 : undefined })
             if (e.arpeggio && keys.length > 1 && part.kind !== 'drums') sn.addModifier(new Stroke(e.arpeggio.direction === 'up' ? Stroke.Type.ROLL_UP : Stroke.Type.ROLL_DOWN, { all_voices: false }), 0)
+            else if (e.strum && o.strums !== false && keys.length > 1 && o.mode === 'staff' && isFretted(part.kind)) sn.addModifier(new Stroke(e.strum === 'down' ? Stroke.Type.BRUSH_DOWN : Stroke.Type.BRUSH_UP, { all_voices: false }), 0)
             accs.forEach((a, i) => { if (a) sn.addModifier(new Accidental(a), i) })
             if (info.dotted) Dot.buildAndAttach([sn], { all: true })
             for (const a of e.art ?? []) sn.addModifier(new Articulation(ART[a]).setPosition(a === 'fermata' ? Modifier.Position.ABOVE : sn.getStemDirection() === 1 ? Modifier.Position.BELOW : Modifier.Position.ABOVE), 0)
@@ -353,6 +371,17 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
           }
           notes.push(note)
           recorded.push({ row: sys.rows[ri], e, note })
+          if (info.triplet) {
+            const beat = Math.floor(e.start / PPQ)
+            ;(triplets.get(beat) ?? triplets.set(beat, []).get(beat)!).push(note)
+          }
+        }
+        // triplets: each beat's triplet notes share one bracket (made before the voice counts ticks)
+        for (const group of triplets.values()) {
+          try {
+            const tuplet = new Tuplet(group as StaveNote[], { num_notes: 3, notes_occupied: 2, bracketed: !(group.length === 3 && group.every((n) => n instanceof StaveNote && n.getDuration() === '8')) })
+            if (!isTab || o.mode === 'tab') drawLater.push(() => tuplet.setContext(ctx).draw())
+          } catch (err) { console.warn('tuplet', err) }
         }
         const voice = new Voice({ num_beats: score.timeSig.num, beat_value: score.timeSig.den }).setMode(Voice.Mode.SOFT)
         voice.addTickables(notes)
@@ -387,6 +416,25 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
         const nx = (r.note as StaveNote).getAbsoluteX?.() ?? startX
         const glyph = r.note.getSVGElement()
         r.row.events.push({ id: r.e.id, measure: mi, start: r.e.start, dur: r.e.dur, x: nx, rest: !!r.e.rest, glyph })
+      }
+      // chord symbols over the top row, at the note (or beat) they start on
+      const chords = chordsByMeasure.get(mi)
+      if (chords && rowYs.length) {
+        const top = rowYs[0]
+        const evs = recorded.filter((r) => r.row === sys.rows[0])
+        ctx.save()
+        ctx.setFont('Inter Variable, sans-serif', 12, 'bold')
+        ctx.setFillStyle(o.colors.ink)
+        let lastRight = -Infinity
+        for (const c of chords) {
+          const at = evs.find((r) => r.e.start === c.tick) ?? [...evs].reverse().find((r) => r.e.start <= c.tick)
+          const nx = at ? ((at.note as StaveNote).getAbsoluteX?.() ?? startX) + (at.e.start === c.tick ? 0 : 6) : startX
+          const cx = Math.max(nx - 2, lastRight + 6)
+          const label = c.name.replace(/([A-G])b/g, '$1♭').replace(/#/g, '♯')
+          ctx.fillText(label, cx, top.y - top.above - 26)
+          lastRight = cx + ctx.measureText(label).width
+        }
+        ctx.restore()
       }
       sys.measures.push({ index: mi, x, w, noteX: startX, endX: x + w })
       x += w

@@ -14,6 +14,10 @@ import VstPicker from './VstPicker'
 import TuningEditor from './TuningEditor'
 import { api } from '@/lib/api'
 
+/** Each instrument family has its own colour (a hue), used for its icon tile and track stripe. */
+export const FAMILY_HUE: Record<string, number> = { keys: 268, guitar: 28, bass: 160, drums: 352, voice: 312, synth: 196, strings: 48, brass: 40, woodwinds: 96 }
+export function partHue(kind: InstrumentKind): number { return FAMILY_HUE[INSTRUMENTS[kind].family] ?? 210 }
+
 export function familyIcon(kind: InstrumentKind, size = 15) {
   const f = INSTRUMENTS[kind].family
   if (f === 'keys') return <Piano size={size} />
@@ -143,14 +147,14 @@ export default function PartsPanel({ project }: { project: Project }) {
           </>}
         </Popover>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 pt-1.5 pb-3 space-y-1 scroll-pt-2">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 pt-1.5 pb-3 space-y-1 scroll-pt-2 stagger-fast">
         {parts.length > 1 && (
-          <button onClick={() => selectPart('all')} className={cx('w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px]', view === 'all' ? 'bg-accent/10 text-accent' : 'text-muted hover:bg-fg/[0.05] hover:text-fg')}>
+          <button onClick={() => selectPart('all')} className={cx('part-all w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px]', view === 'all' ? 'on text-accent' : 'text-muted hover:bg-fg/[0.05] hover:text-fg')}>
             <Layers size={15} /> Full score
           </button>
         )}
         {project.audio && (
-          <div className="rounded-xl px-2.5 py-2 bg-fg/[0.03]">
+          <div className="part-card mix rounded-xl px-2.5 py-2">
             <div className="flex items-center gap-2">
               <AudioLines size={15} className="text-muted" />
               <span className="flex-1 text-[13px]">Original mix</span>
@@ -200,16 +204,17 @@ export default function PartsPanel({ project }: { project: Project }) {
                 setDragging(null)
                 setDropTarget(null)
               }}
-              className={cx('group relative rounded-xl px-2.5 py-2 transition-colors', active ? 'bg-accent/[0.09] ring-1 ring-accent/30' : 'hover:bg-fg/[0.04]', !groupHead && '-mt-0.5')}>
+              style={{ ['--hue' as string]: partHue(p.kind) }}
+              className={cx('part-card group relative rounded-xl px-2.5 py-2', active && 'on', p.mute && 'muted', !groupHead && '-mt-0.5')}>
               {dropTarget?.id === p.id && <div className={cx('pointer-events-none absolute inset-x-1 h-0.5 rounded bg-accent', dropTarget.after ? 'bottom-0' : 'top-0')} />}
               <div className="flex items-center gap-2">
-                <span className="cursor-grab text-faint hover:text-accent active:cursor-grabbing -ml-1" title="Drag to reorder instrument" draggable
+                <span className="cursor-grab text-faint hover:text-accent active:cursor-grabbing -ml-1.5 w-0 group-hover:w-3.5 opacity-0 group-hover:opacity-100 transition-all overflow-hidden" title="Drag to reorder instrument" draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData('application/x-aurel-instrument', p.id)
                     e.dataTransfer.effectAllowed = 'move'
                     setDragging(p.id)
                   }} onDragEnd={() => { setDragging(null); setDropTarget(null) }}><GripVertical size={14} /></span>
-                <button className={cx('shrink-0', active ? 'text-accent' : 'text-muted')} aria-label={`Show ${p.name}`} title={`Show ${p.name}`} onClick={() => selectPart(p)}>{familyIcon(p.kind)}</button>
+                <button className="part-icon shrink-0" aria-label={`Show ${p.name}`} title={`Show ${p.name}`} onClick={() => selectPart(p)}>{familyIcon(p.kind)}</button>
                 <div className="flex-1 min-w-0" onClick={() => selectPart(p)}>
                   {renaming === p.id ? (
                     <input autoFocus className="field !h-6 !px-1.5 !text-[12.5px]" defaultValue={p.name} onBlur={(e) => { st.updatePart(p.id, { name: e.target.value.trim() || p.name }); setRenaming(null) }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(null) }} />

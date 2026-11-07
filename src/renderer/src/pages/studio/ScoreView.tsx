@@ -59,6 +59,8 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
   const [drag, setDrag] = useState<NoteDrag | null>(null)
   const swallowClick = useRef(false)
   const theme = useApp((s) => s.settings?.theme)
+  const showChords = useApp((s) => s.settings?.chordSymbols ?? true)
+  const showStrums = useApp((s) => s.settings?.strumArrows ?? true)
   const { cursor, sel, range, tabString, noteSelection } = useProject()
   const mode: ViewMode = project.view?.mode ?? 'both'
   const zoom = project.view?.zoom ?? 1
@@ -78,7 +80,7 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
   latest.current = { score: project.score, parts }
   const notationKey = useMemo(() => {
     const sc = project.score
-    return JSON.stringify([sc.title, sc.composer, sc.tempo, sc.timeSig, sc.keyFifths,
+    return JSON.stringify([sc.title, sc.composer, sc.tempo, sc.timeSig, sc.keyFifths, sc.chords,
       parts.map((p) => [p.id, p.name, p.kind, p.clef, p.group, p.tuning, p.capo, identity(p.measures)]),
       project.score.parts.find((p) => p.kind === 'singer')?.lyrics, project.audio?.offset, project.audio?.tempoLinked, project.audio?.referenceTempo])
   }, [project.score, parts])
@@ -88,7 +90,7 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
     const { score, parts: shown } = latest.current
     const timing = lyricTiming(project)
     const words = score.parts.find((p) => p.kind === 'singer')?.lyrics?.words ?? []
-    const l = renderScore(svgHost.current, score, { parts: shown, mode, width: width - 48, zoom, colors: themeColors(), header: true,
+    const l = renderScore(svgHost.current, score, { parts: shown, mode, width: width - 48, zoom, colors: themeColors(), header: true, chords: showChords, strums: showStrums,
       systemFooter: (first, last, available) => {
         const rowWords = words.filter((w) => timing.toTick(w.start) >= first * mt && timing.toTick(w.start) < (last + 1) * mt)
         if (!rowWords.length) return 0
@@ -100,7 +102,7 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
     })
     setLayout(l)
     if (performance.now() - t0 > 400) console.info(`score render ${Math.round(performance.now() - t0)}ms`)
-  }, [notationKey, mode, zoom, width, theme])
+  }, [notationKey, mode, zoom, width, theme, showChords, showStrums])
 
   useLayoutEffect(() => {
     if (!layout || !noteSelection) return
@@ -375,8 +377,8 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
   return (
     <div ref={host} className="h-full min-w-0 relative">
       <div ref={scroller} className="absolute inset-0 overflow-auto">
-        <div className="mx-6 my-5 rounded-2xl bg-paper shadow-[0_1px_0_rgb(var(--line)),0_10px_40px_-20px_rgb(0_0_0/0.35)] relative">
-          <div className="relative score-sheet" onClick={onClick} onMouseDown={onMouseDown} onDoubleClick={onDouble} onContextMenu={onContext} style={{ cursor: drag?.active ? (drag.copy ? 'copy' : 'grabbing') : 'text' }}>
+        <div className="score-paper mx-6 my-5 rounded-2xl bg-paper relative">
+          <div key={project.id} className="relative score-sheet animate-sheet" onClick={onClick} onMouseDown={onMouseDown} onDoubleClick={onDouble} onContextMenu={onContext} style={{ cursor: drag?.active ? (drag.copy ? 'copy' : 'grabbing') : 'text' }}>
             <div ref={svgHost} />
             <div className="absolute inset-0 pointer-events-none">
               {overlays}

@@ -1,7 +1,7 @@
 import { AudioLines, Youtube, PenLine, FileMusic, Link2, PackageOpen, Cpu, ArrowRight } from 'lucide-react'
 import { useApp } from '@/store/app'
 import { api } from '@/lib/api'
-import { Artwork, cx, relTime, Modal, moveMenuFocus } from '@/components/ui'
+import { Artwork, cx, relTime, Modal } from '@/components/ui'
 import { midiToScore } from '@/music/midi'
 import { newProject } from '@/music/score'
 import { openContextMenu } from '@/components/menu'
@@ -47,9 +47,7 @@ export default function Home() {
           </h1>
         </header>
 
-        <section aria-label="Home actions" onKeyDown={(event) => {
-          moveMenuFocus(event, Array.from(event.currentTarget.querySelectorAll("button:not(:disabled)")))
-        }} className="grid grid-cols-3 gap-4">
+        <section aria-label="Home actions" className="grid grid-cols-3 gap-4">
           {cards.map((c, i) => (
             <button key={c.title} autoFocus={i === 0} onClick={c.action} className="group card home-feature text-left p-6 hover:border-accent/50 hover:-translate-y-1 hover:shadow-[0_18px_40px_-22px_rgb(var(--accent)/.55)] transition-all duration-300 animate-fadein relative overflow-hidden" style={{ animationDelay: `${i * 60}ms` }}>
               <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-accent/[0.06] group-hover:bg-accent/[0.12] transition-colors" />
@@ -58,7 +56,7 @@ export default function Home() {
               <p className="text-muted text-[13px] leading-relaxed min-h-[40px]">{c.body}</p>
               <div className="mt-5 flex items-center justify-between text-[11.5px] text-faint">
                 <span>{c.hint}</span>
-                <ArrowRight size={15} className="text-accent opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                <ArrowRight size={15} className="text-accent opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-focus-visible:opacity-100 group-focus-visible:translate-x-0 transition-all" />
               </div>
             </button>
           ))}

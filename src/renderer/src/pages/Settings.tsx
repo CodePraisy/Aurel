@@ -133,7 +133,7 @@ export default function SettingsPage({ section }: { section?: string }) {
     <div className="h-full flex">
       <aside aria-label="Settings categories" data-keyboard-menu="" onKeyDown={(event) => {
         if (event.target instanceof HTMLInputElement) return
-        moveMenuFocus(event, Array.from(event.currentTarget.querySelectorAll(".settings-nav button:not(:disabled)")))
+        moveMenuFocus(event, Array.from(event.currentTarget.querySelectorAll(".settings-nav button:not(:disabled)")), false)
         if (event.defaultPrevented && document.activeElement instanceof HTMLButtonElement) document.activeElement.click()
       }} className="relative z-20 w-[236px] shrink-0 px-3 pt-1 border-r border-line flex flex-col">
         <h1 className="font-display text-[26px] px-2 mb-3">Settings</h1>
@@ -203,6 +203,8 @@ export default function SettingsPage({ section }: { section?: string }) {
               <Row id="soloFollows" title="Solo follows track selection" desc="Choosing a part solos it; going back to the full score clears the solos. Use the S button to unsolo while staying on a part."><Toggle on={s.soloFollowsView} onChange={(v) => set({ soloFollowsView: v })} /></Row>
               <Row id="cursorStyle" title="Playback cursor"><div className="seg">{(['band', 'line'] as const).map((c) => <button key={c} className={cx(s.cursorStyle === c && 'on')} onClick={() => set({ cursorStyle: c })}>{c === 'band' ? 'Band' : 'Thin line'}</button>)}</div></Row>
               <Row id="highlightNotes" title="Highlight playing notes" desc="Light up each note as it sounds."><Toggle on={s.highlightNotes} onChange={(v) => set({ highlightNotes: v })} /></Row>
+              <Row id="showChordSymbols" title="Chord symbols" desc="Show the chords found in the recording over the score."><Toggle ariaLabel="Chord symbols" on={s.chordSymbols ?? true} onChange={(v) => set({ chordSymbols: v })} /></Row>
+              <Row id="strumArrows" title="Strum arrows" desc="Show whether each guitar chord was strummed down or up."><Toggle ariaLabel="Strum arrows" on={s.strumArrows ?? true} onChange={(v) => set({ strumArrows: v })} /></Row>
               <EffectTails s={s} set={set} />
             </>
           )}

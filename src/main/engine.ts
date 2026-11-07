@@ -37,7 +37,7 @@ async function checkPython(py: Py): Promise<EngineStatus> {
   try {
     if (r.code !== 0) throw new Error()
     const j = JSON.parse(r.out.trim().split('\n').pop()!)
-    const optional = new Set(['transkun', 'onnxruntime', 'torchcrepe', 'adtof-pytorch'])
+    const optional = new Set(['transkun', 'onnxruntime', 'torchcrepe', 'adtof-pytorch', 'einops', 'rotary-embedding-torch', 'beartype'])
     const missing = Object.entries(j.packages).filter(([name, version]) => !version && !optional.has(name)).map(([name]) => name)
     return {
       python: { found: true, path: py.cmd, version: j.python },
@@ -114,12 +114,22 @@ export async function installEngineJob(ctx: JobCtx): Promise<EngineStatus> {
   }
   if (!status.ready) throw new Error(status.message ?? 'Engine verification failed')
   const marker = join(root, ENGINE_READY_FILE)
-  if (!fs.existsSync(marker) || fs.readFileSync(marker, "utf8") !== DEFAULT_SETTINGS.separationModel) {
-    const model = DEFAULT_SETTINGS.separationModel
-    await run(py.cmd, [paths.engineScript, 'prepare-model', '--model', model], 'Downloading the default separation model', {
-      ...process.env, PYTHONIOENCODING: 'utf-8', TORCH_HOME: join(root, 'models')
-    })
-    writeAtomic(marker, model)
+  // everything the default transcription uses is downloaded now, so the first song needs nothing more:
+  // the 6-instrument split (automatic detection), the fine-tuned 4-instrument one (Best), and on an
+  // NVIDIA GPU the BS-RoFormer separator
+  const wanted = ['htdemucs_6s', DEFAULT_SETTINGS.separationModel].join(',') + (status.cuda ? ',bs_roformer_sw' : '')
+  if (!fs.existsSync(marker) || fs.readFileSync(marker, 'utf8') !== wanted) {
+    for (const model of ['htdemucs_6s', DEFAULT_SETTINGS.separationModel]) {
+      await run(py.cmd, [paths.engineScript, 'prepare-model', '--model', model], `Downloading the separation model (${model === 'htdemucs_6s' ? '6 instruments' : 'fine-tuned'})`, {
+        ...process.env, PYTHONIOENCODING: 'utf-8', TORCH_HOME: join(root, 'models')
+      })
+    }
+    if (status.cuda) {
+      try {
+        await run(py.cmd, [paths.engineScript, 'prepare-roformer', '--dir', join(root, 'models')], 'Downloading the BS-RoFormer separation model (700 MB)', { ...process.env, PYTHONIOENCODING: 'utf-8' })
+      } catch (e) { ctx.log(`BS-RoFormer will be downloaded on first use: ${(e as Error).message}`) }
+    }
+    writeAtomic(marker, wanted)
   }
   await run(py.cmd, [paths.engineScript, "prepare-words", "--models-dir", join(root, "models", "whisper"), "--words-model", getSettings().lyricsModel ?? "base"], "Preparing the Whisper word transcription model", { ...process.env, PYTHONIOENCODING: "utf-8" })
   cached = null
@@ -140,8 +150,12 @@ export async function processJob(ctx: JobCtx, projectId: string, sources?: Trans
   const project = loadProjectFile(projectId)
   if (!project?.audio) throw new Error('This project has no audio to process.')
   const s = getSettings()
-  // automatic detection needs the 6-source split, or guitar and piano would end up in "other"
-  const model = !sources?.length || sources.some((source) => source === 'guitar' || source === 'piano') ? 'htdemucs_6s' : s.separationModel
+  // automatic detection needs a 6-source split, or guitar and piano would end up in "other".
+  // BS-RoFormer separates guitar and piano several dB more cleanly than Demucs, but it is ~10x
+  // heavier, so on its own it is used only on an NVIDIA GPU (or when chosen in Settings).
+  const quality = s.transcribeQuality ?? 'balanced'
+  const roformer = s.separator === 'roformer' || ((s.separator ?? 'auto') === 'auto' && st.cuda && s.device !== 'cpu' && quality !== 'fast')
+  const model = roformer ? 'bs_roformer_sw' : !sources?.length || sources.some((source) => source === 'guitar' || source === 'piano') ? 'htdemucs_6s' : s.separationModel
   const dir = paths.project(projectId)
   const setStatus = (status: NonNullable<typeof project.analysis>['status'], error?: string) => {
     const p = loadProjectFile(projectId)
@@ -179,6 +193,11 @@ export async function processJob(ctx: JobCtx, projectId: string, sources?: Trans
       '--model', model,
       '--models-dir', join(paths.engineRoot, 'models', 'whisper'),
       '--beat-model', beatModelPath(),
+      '--roformer-dir', join(paths.engineRoot, 'models'),
+      '--bleed', s.bleedCheck === false ? '0' : '1',
+      '--chords', s.chordSymbols === false ? '0' : '1',
+      '--chord-clean', s.chordCleanup === false ? '0' : '1',
+      '--techniques', s.detectTechniques === false ? '0' : '1',
       '--quality', s.transcribeQuality ?? 'balanced',
       '--sensitivity', String(s.noteSensitivity ?? 0.5),
       '--drum-model', s.drumModel ?? 'adtof',
@@ -189,7 +208,7 @@ export async function processJob(ctx: JobCtx, projectId: string, sources?: Trans
       '--device', device,
       ...(s.drumSplit ? ['--drums'] : [])
     ], {
-      env: { ...process.env, PYTHONIOENCODING: 'utf-8', TORCH_HOME: join(model === DEFAULT_SETTINGS.separationModel ? paths.engineRoot : paths.data, 'models') },
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', ...(s.customNoteModel && fs.existsSync(s.customNoteModel) ? { AUREL_TRANSKUN_CHECKPOINT: s.customNoteModel } : {}), TORCH_HOME: join(model === DEFAULT_SETTINGS.separationModel || model === 'htdemucs_6s' || model === 'bs_roformer_sw' ? paths.engineRoot : paths.data, 'models') },
       onLine: (l, stream) => {
         if (stream === 'err') { ctx.log(l); lastErr = l; return }
         try {

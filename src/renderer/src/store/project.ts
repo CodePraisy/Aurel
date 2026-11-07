@@ -334,10 +334,11 @@ export const useProject = create<EditorState>((set, get) => {
     },
     move: (dir, byMeasure) => {
       const st = get()
-      const part = currentPart(st)
-      if (!part || !st.cursor) return
+      const part = currentPart(st) ?? st.project?.score.parts[0]
+      if (!part || !part.measures.length) return
       if (st.noteSelection) set({ noteSelection: null })
-      let { measure } = st.cursor
+      const cursor = st.cursor && st.cursor.partId === part.id ? st.cursor : { partId: part.id, measure: 0, tick: 0 }
+      let measure = Math.max(0, Math.min(part.measures.length - 1, cursor.measure))
       if (byMeasure) {
         measure = Math.max(0, Math.min(part.measures.length - 1, measure + dir))
         const e = part.measures[measure].events[0]
@@ -346,16 +347,20 @@ export const useProject = create<EditorState>((set, get) => {
       }
       const evs = part.measures[measure].events
       let ei = evs.findIndex((e) => e.id === st.sel)
-      if (ei < 0) ei = evs.findIndex((e) => e.start <= st.cursor!.tick && e.start + e.dur > st.cursor!.tick)
+      if (ei < 0) ei = evs.findIndex((e) => e.start <= cursor.tick && e.start + e.dur > cursor.tick)
+      if (ei < 0) ei = dir > 0 ? -1 : evs.length
       ei += dir
-      if (ei < 0) {
-        if (measure === 0) return
-        measure--
-        ei = part.measures[measure].events.length - 1
-      } else if (ei >= part.measures[measure].events.length) {
-        if (measure >= part.measures.length - 1) return
-        measure++
-        ei = 0
+      // step over empty bars (a bar with no events at all) instead of stopping on them
+      while (ei < 0 || ei >= part.measures[measure].events.length) {
+        if (ei < 0) {
+          if (measure === 0) return
+          measure--
+          ei = part.measures[measure].events.length - 1
+        } else {
+          if (measure >= part.measures.length - 1) return
+          measure++
+          ei = 0
+        }
       }
       const e = part.measures[measure].events[ei]
       set({ cursor: { partId: part.id, measure, tick: e.start }, sel: e.id })

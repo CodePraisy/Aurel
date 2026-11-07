@@ -123,10 +123,11 @@ export const useApp = create<AppState>((set, get) => ({
 export function transcribeOptions(s: Settings | null | undefined): TranscribeOptions {
   if (!s) return DEFAULT_TRANSCRIBE
   return {
-    rhythm: { detail: s.rhythmDetail ?? 'standard', fillGaps: s.fillGaps ?? true, straightSwing: s.straightSwing ?? true },
+    rhythm: { detail: s.rhythmDetail ?? 'standard', fillGaps: s.fillGaps ?? true, straightSwing: s.straightSwing ?? true, triplets: s.triplets ?? true },
     followTempo: s.followTempo ?? true,
     vocalMelody: s.vocalMelody ?? false,
-    guitarChordLimit: s.guitarChordLimit ?? 6
+    guitarChordLimit: s.guitarChordLimit ?? 6,
+    chords: s.chordSymbols ?? true
   }
 }
 

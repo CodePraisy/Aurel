@@ -183,7 +183,7 @@ export function DrumGrid({ part, project }: { part: Part; project: Project }) {
             <span className="w-24 text-[11px] text-muted truncate">{d.label}</span>
             {Array.from({ length: steps }).map((_, s) => (
               <button key={s} onClick={() => st.drumToggle(mi, s, d.midi, steps)}
-                className={cx('flex-1 h-[13px] rounded-[3px] transition-colors', has(s, d.midi) ? 'bg-accent' : s % beat === 0 ? 'bg-fg/[0.12] hover:bg-fg/25' : 'bg-fg/[0.06] hover:bg-fg/20', playStep === s && 'ring-1 ring-accent2')} />
+                className={cx('step-cell flex-1 h-[13px] rounded-[3px] transition-all duration-150', has(s, d.midi) ? 'on bg-accent' : s % beat === 0 ? 'bg-fg/[0.12] hover:bg-fg/25' : 'bg-fg/[0.06] hover:bg-fg/20', playStep === s && 'now ring-1 ring-accent2')} />
             ))}
           </div>
         ))}

@@ -17,6 +17,7 @@ import SettingsPage from '@/pages/Settings'
 import Studio from '@/pages/Studio'
 import { NewCompositionDialog, YouTubeDialog, UrlDialog } from '@/pages/Dialogs'
 import { UpdateDialog } from '@/pages/UpdateDialog'
+import { installSpatialNav } from '@/lib/spatialNav'
 
 export default function App() {
   const { route, go, settings, loadSettings, refreshLibrary, refreshEngine, toasts, jobs, importFile } = useApp()
@@ -45,6 +46,8 @@ export default function App() {
   const [dragging, setDragging] = useState(false)
 
   useEffect(() => { void loadSettings(); void refreshLibrary(); void refreshEngine() }, [loadSettings, refreshLibrary, refreshEngine])
+  // arrow keys move between buttons, cards and rows on every page
+  useEffect(() => installSpatialNav(), [])
   // every piece you open stays in the sidebar until you close it
   const openId = route.name === 'studio' ? route.projectId : null
   useEffect(() => { if (openId && settings) openSession(openId) }, [openId, !!settings])

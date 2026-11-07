@@ -1,7 +1,7 @@
 {
   "name": "aurel",
   "productName": "Aurel",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "AI music transcription, composition & practice studio",
   "author": "Praise Onuoha",
   "license": "UNLICENSED",
@@ -65,7 +65,8 @@
         "to": "engine",
         "filter": [
           "**/*.py",
-          "requirements*.txt"
+          "requirements*.txt",
+          "sep_roformer/LICENSE"
         ]
       }
     ],
