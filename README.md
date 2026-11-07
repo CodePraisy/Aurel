@@ -4,14 +4,14 @@
 
 Aurel separates a recording into instrument stems (vocals, drums, bass, guitar, piano, other) and transcribes each stem into standard notation and guitar tablature. It also gives you a synchronized practice player, a full score editor, and real-time hosting for VST3 instruments and effects on Windows. Projects, audio and AI processing all stay on your machine.
 
-## Download — v0.4.6
+## Download — v0.4.7
 
-- [`Aurel-0.4.6-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.6/Aurel-0.4.6-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
-- [`Aurel-0.4.6-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.6/Aurel-0.4.6-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
-- [`Aurel-0.4.6-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.6/Aurel-0.4.6-macOS-arm64.zip) (Mac with Apple silicon)
-- [`Aurel-0.4.6-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.6/Aurel-0.4.6-macOS-x64.zip) (Mac with an Intel processor)
+- [`Aurel-0.4.7-Windows-x64.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.7/Aurel-0.4.7-Windows-x64.exe) (Windows 10/11, 64-bit — installer, recommended)
+- [`Aurel-0.4.7-Windows-x64-Portable.exe`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.7/Aurel-0.4.7-Windows-x64-Portable.exe) (Windows 10/11, 64-bit — portable, no installation)
+- [`Aurel-0.4.7-macOS-arm64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.7/Aurel-0.4.7-macOS-arm64.zip) (Mac with Apple silicon)
+- [`Aurel-0.4.7-macOS-x64.zip`](https://github.com/CodePraisy/Aurel/releases/download/v0.4.7/Aurel-0.4.7-macOS-x64.zip) (Mac with an Intel processor)
 
-[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.4.6)
+[Release notes and source archives](https://github.com/CodePraisy/Aurel/releases/tag/v0.4.7)
 
 To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: Apple M…** means Apple silicon. **Processor: Intel** means Intel.
 
@@ -25,14 +25,14 @@ To check which Mac you have, choose **Apple menu → About This Mac**. **Chip: A
 
 ### Windows (installer)
 
-1. Download `Aurel-0.4.6-Windows-x64.exe` and run it.
+1. Download `Aurel-0.4.7-Windows-x64.exe` and run it.
 2. If Microsoft Defender SmartScreen shows **"Windows protected your PC"**, select **More info → Run anyway**. The warning appears because the build is not yet code-signed.
 3. Complete the setup wizard; the defaults are fine. During installation, the AI transcription engine is downloaded and configured (one-time, 3–5 GB), so an internet connection is required. If this step is interrupted, Aurel still installs, and you can finish later from **Settings → AI Engine**.
 4. Launch **Aurel** from the Start menu or the desktop shortcut.
 
 ### Windows (portable)
 
-Download `Aurel-0.4.6-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
+Download `Aurel-0.4.7-Windows-x64-Portable.exe` and run it from any folder or a USB drive. Nothing is installed. The SmartScreen note above also applies. The AI engine is set up the first time you transcribe.
 
 ### macOS
 
@@ -66,6 +66,12 @@ Download `Aurel-0.4.6-Windows-x64-Portable.exe` and run it from any folder or a 
 - **Updates:** Aurel checks for a new release at startup and asks before installing. To check manually or turn off automatic checks, open **Settings → About & limits**.
 
 ---
+
+## What’s new in v0.4.7
+
+Singer tracks play the isolated vocal recording and show recognized words on a beat-aligned lyric timeline. They generate no vocal MIDI notes. Click words to seek and use Edit words to correct the text. Whisper runs locally; its dependency and multilingual base model are prepared by AI-engine setup, including the Windows installer. Older recordings need re-transcription to produce words.
+
+Choir is removed from new instrument and sound choices. Existing saved parts remain readable. The default separator for new installations is fine-tuned four-stem Demucs (vocals, bass, drums, and music). Six-source separation is used when guitar or piano is explicitly requested. Fine-tuned separation is slower than the standard model. Singing recognition and separation can contain errors.
 
 ## What’s new in v0.4.6
 
@@ -120,7 +126,7 @@ On Windows, opening a VST3 effect editor from Studio keeps playback running and 
 
 ### Transcription
 
-Demucs separates the recording into vocals, drums, bass, guitar, piano and other. The vocal stem is then cleaned so it holds only the singers: what is left of the band is filtered out, and passages without singing are silent. Basic Pitch turns each part into notes. Tempo, time signature and the first beat are detected, and the notes are lined up to a 16th-note grid as editable notation and tab. Aurel uses an NVIDIA graphics card when one is available, otherwise the processor.
+Demucs first separates the recording into vocals, drums, bass and music, or six sources when configured. The Singer track uses Whisper for words; instrument tracks use Basic Pitch for notation. The vocal stem is then cleaned so it holds only the singers: what is left of the band is filtered out, and passages without singing are silent. Basic Pitch turns the instrumental parts into notes. Tempo, time signature and the first beat are detected, and the notes are lined up to a 16th-note grid as editable notation and tab. Aurel uses an NVIDIA graphics card when one is available, otherwise the processor.
 
 What to expect:
 

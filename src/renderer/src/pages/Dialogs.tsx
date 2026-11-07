@@ -14,12 +14,12 @@ const TEMPLATES: { name: string; parts: InstrumentKind[] }[] = [
   { name: 'Blank', parts: [] },
   { name: 'Solo Piano', parts: ['piano'] },
   { name: 'Rock Band', parts: ['distorted-guitar', 'clean-guitar', 'bass', 'drums'] },
-  { name: 'Singer-Songwriter', parts: ['vocals', 'acoustic-guitar'] },
+  { name: 'Singer-Songwriter', parts: ['acoustic-guitar'] },
   { name: 'Jazz Trio', parts: ['piano', 'bass', 'drums'] },
-  { name: 'Lead Sheet', parts: ['vocals', 'piano'] },
+  { name: 'Lead Sheet', parts: ['piano'] },
   { name: 'Strings', parts: ['strings', 'strings', 'strings', 'strings'] }
 ]
-export const ADDABLE: InstrumentKind[] = ['piano', 'epiano', 'organ', 'synth', 'acoustic-guitar', 'clean-guitar', 'distorted-guitar', 'bass', 'drums', 'vocals', 'strings', 'brass', 'woodwinds']
+export const ADDABLE: InstrumentKind[] = ['piano', 'epiano', 'organ', 'synth', 'acoustic-guitar', 'clean-guitar', 'distorted-guitar', 'bass', 'drums', 'strings', 'brass', 'woodwinds']
 
 export function NewCompositionDialog() {
   const { dialog, setDialog, refreshLibrary, go } = useApp()

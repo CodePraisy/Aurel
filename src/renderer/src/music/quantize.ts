@@ -106,15 +106,16 @@ export function detectKey(notes: { p: number; dur: number }[]): { fifths: number
 }
 
 // ---------- analysis -> score ----------
-const MODE_FOR: Partial<Record<InstrumentKind, QuantizeOpts['mode']>> = { vocals: 'melody', bass: 'bass', brass: 'melody', woodwinds: 'melody' }
+const MODE_FOR: Partial<Record<InstrumentKind, QuantizeOpts['mode']>> = { vocals: 'melody', singer: 'melody', bass: 'bass', brass: 'melody', woodwinds: 'melody' }
 const POLY_FOR: Partial<Record<InstrumentKind, number>> = { 'acoustic-guitar': 6, 'clean-guitar': 6, 'distorted-guitar': 4, piano: 10, epiano: 10, organ: 8, synth: 6, strings: 6 }
 
 export function analysisToScore(a: EngineAnalysis, title: string, composer: string, ts = { num: 4, den: 4 }, grid?: { tempo: number; offset: number }, pianoGrandStaff = true): { score: Score; offset: number; key: string } {
   const tempo = grid?.tempo ?? (Math.round(a.tempo) || 120)
   const mt = measureTicks(ts)
   const measureSec = (mt / PPQ) * (60 / tempo)
-  const all = Object.values(a.notes).flat()
-  const firstNote = Math.min(...all.filter((n) => n.e - n.s >= 0.06).map((n) => n.s), ...(a.drums ?? []).map((d) => d.t))
+  const all = Object.entries(a.notes).filter(([name]) => name !== "vocals").flatMap(([, notes]) => notes)
+  const words = Object.values(a.lyrics ?? {}).flatMap((lyrics) => lyrics.words)
+  const firstNote = Math.min(...words.map((word) => word.start), ...all.filter((n) => n.e - n.s >= 0.06).map((n) => n.s), ...(a.drums ?? []).map((d) => d.t))
   let offset = grid?.offset ?? a.downbeat ?? a.beatOffset
   if (Number.isFinite(firstNote) && firstNote - offset >= measureSec) {
     offset += Math.floor((firstNote - offset) / measureSec) * measureSec
@@ -122,14 +123,16 @@ export function analysisToScore(a: EngineAnalysis, title: string, composer: stri
   // Step back if the recording has notes before the detected downbeat.
   const beatSec = 60 / tempo
   if (isFinite(firstNote) && firstNote < offset - 0.03) offset = Math.max(0, offset - Math.ceil((offset - firstNote - 0.03) / beatSec) * beatSec)
-  const pitched = a.stems.filter((s) => s.kind !== 'drums')
+  const pitched = a.stems.filter((s) => s.kind !== 'drums' && s.name !== 'vocals')
   const key = detectKey(pitched.flatMap((s) => (a.notes[s.name] ?? []).map((n) => ({ p: n.p, dur: n.e - n.s }))))
 
-  const lastSec = Math.max(...all.map((n) => n.e), ...(a.drums ?? []).map((d) => d.t), 1)
+  const lastSec = Math.max(...all.map((n) => n.e), ...words.map((word) => word.end), ...(a.drums ?? []).map((d) => d.t), a.duration ?? 1)
   const minMeasures = Math.max(1, Math.ceil(((lastSec - offset) / measureSec)))
   const parts: Part[] = []
   for (const stem of a.stems) {
-    const cls = { label: stem.kind, confidence: stem.confidence, traits: stem.traits }
+    const singer = stem.name === "vocals"
+    const kind = singer ? "singer" : stem.kind
+    const cls = { label: kind, confidence: stem.confidence, traits: stem.traits }
     if (stem.kind === 'drums') {
       const hits = a.drums ?? []
       const piece = (id: string) => DRUM_PIECES.find((p) => p.id === id)?.midi ?? 38
@@ -154,9 +157,16 @@ export function analysisToScore(a: EngineAnalysis, title: string, composer: stri
       parts.push(rh, lh)
       continue
     }
-    const p = defaultPart(stem.kind, 0, mt, label)
+    const p = defaultPart(kind, 0, mt, singer ? "Singer" : label)
+    if (singer) {
+      p.lyrics = a.lyrics?.[stem.name] ?? { language: "", words: [], text: "" }
+      p.measures = Array.from({ length: minMeasures }, () => emptyMeasure(mt))
+      Object.assign(p, { stem: stem.file, playback: "audio", classification: cls })
+      parts.push(p)
+      continue
+    }
     p.measures = onsetsToMeasures(
-      quantizeNotes(notes, { tempo, offset, timeSig: ts, mode: MODE_FOR[stem.kind] ?? 'poly', maxPoly: POLY_FOR[stem.kind] ?? 6 }),
+      quantizeNotes(notes, { tempo, offset, timeSig: ts, mode: MODE_FOR[kind] ?? 'poly', maxPoly: POLY_FOR[stem.kind] ?? 6 }),
       ts, minMeasures
     )
     Object.assign(p, { stem: stem.file, playback: 'audio', classification: cls })

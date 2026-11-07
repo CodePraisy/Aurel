@@ -15,12 +15,27 @@ export default function PrintView() {
       const params = await api.print.params()
       if (!params) { setMsg('Nothing to print'); return }
       const p: Project = await api.project.load(params.projectId)
-      const parts = p.score.parts.filter((x) => !params.partIds || params.partIds.includes(x.id))
+      const selected = p.score.parts.filter((x) => !params.partIds || params.partIds.includes(x.id))
+      const parts = selected.filter((part) => part.kind !== "singer")
       const score = { ...p.score, parts: parts.map((x) => ({ ...x, measures: x.measures.slice(params.from ?? 0, (params.to ?? x.measures.length - 1) + 1) })) }
       await document.fonts.ready
       const el = ref.current!
       renderScore(el, score, { parts: score.parts, mode: params.mode as 'staff' | 'tab' | 'both', width: 760, zoom: Math.max(0.5, Math.min(1.4, params.scale ?? 1)), spacing: Math.max(0.7, Math.min(1.5, params.spacing ?? 1)), header: true, split: true, colors: { ink: '#111', paper: '#fff', staff: '#555', faint: '#666', accent: '#000' } })
-      setMsg('')
+      for (const part of selected.filter((part) => part.kind === "singer")) {
+        const title = document.createElement("h2")
+        title.textContent = part.name + " · lyrics"
+        el.appendChild(title)
+        for (const word of part.lyrics?.words ?? []) {
+          const beat = (word.start - (p.audio?.offset ?? 0)) * p.score.tempo / 60
+          const measure = Math.floor(beat / (p.score.timeSig.num * 4 / p.score.timeSig.den))
+          if (measure < (params.from ?? 0) || measure > (params.to ?? Infinity)) continue
+          const item = document.createElement("span")
+          item.textContent = word.text + " "
+          item.title = "Time " + word.start.toFixed(2)
+          el.appendChild(item)
+        }
+      }
+      setMsg("")
       requestAnimationFrame(() => api.print.ready())
     })()
   }, [])

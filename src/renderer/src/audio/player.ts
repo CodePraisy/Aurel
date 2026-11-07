@@ -378,6 +378,7 @@ class Player {
   }
 
   private effective(part: Part): Part {
+    if (part.kind === "singer" && part.stem) return { ...part, playback: "audio" }
     if (this.opts.listen === 'transcription' && part.playback !== 'midi') return { ...part, playback: 'midi' }
     if (this.opts.listen === 'original' && part.stem && part.playback !== 'audio') return { ...part, playback: 'audio' }
     return part
@@ -927,6 +928,7 @@ class Player {
   // ---------- auditioning: note entry, on-screen keyboard and fretboard, MIDI keyboard ----------
   /** Play a note on a part as it really sounds (its own instrument and effects) until stop() is called. */
   noteOn(part: Part | null, pitch: number, velocity = 96): LiveNote {
+    if (part?.kind === "singer") return { stop: () => undefined }
     const ctx = this.ensure()
     if (this.project) this.syncBuses()
     const sr = ctx.sampleRate

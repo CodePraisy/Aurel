@@ -8,7 +8,7 @@ export const PPQ = 480 // ticks per quarter note
 export type InstrumentKind =
   | 'piano' | 'epiano' | 'organ' | 'synth'
   | 'acoustic-guitar' | 'clean-guitar' | 'distorted-guitar' | 'bass'
-  | 'drums' | 'vocals' | 'strings' | 'brass' | 'woodwinds' | 'other'
+  | 'drums' | 'vocals' | 'singer' | 'strings' | 'brass' | 'woodwinds' | 'other'
 
 export const TRANSCRIPTION_SOURCES = ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other'] as const
 export type TranscriptionSource = typeof TRANSCRIPTION_SOURCES[number]
@@ -49,7 +49,11 @@ export interface Classification {
   traits?: Record<string, string>
 }
 
+export interface VocalWord { start: number; end: number; text: string }
+export interface VocalTranscript { error?: string; language: string; words: VocalWord[]; text: string }
+
 export interface Part {
+  lyrics?: VocalTranscript
   id: string
   name: string
   kind: InstrumentKind
@@ -269,6 +273,8 @@ export interface ExportAudioSettings {
 }
 
 export interface EngineAnalysis {
+  duration?: number
+  lyrics?: Record<string, VocalTranscript>
   tempo: number
   beatOffset: number
   timeSig?: { num: number; den: number }

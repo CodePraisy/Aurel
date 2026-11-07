@@ -39,7 +39,7 @@ def log(*a) -> None:
 # --------------------------------------------------------------------------- status
 def cmd_status() -> None:
     pk = {}
-    for name in ("torch", "torchaudio", "demucs", "basic-pitch", "librosa", "numpy", "scipy"):
+    for name in ("torch", "torchaudio", "demucs", "basic-pitch", "librosa", "numpy", "scipy", "openai-whisper"):
         try:
             pk[name] = metadata.version(name)
         except metadata.PackageNotFoundError:
@@ -375,6 +375,23 @@ def transcribe_drums(audio, out_dir: str | None):
     return hits
 
 
+def transcribe_words(audio, models_dir):
+    import librosa
+    import whisper
+
+    mono = audio.mean(0)
+    samples = librosa.resample(mono, orig_sr=SR, target_sr=16000)
+    model = whisper.load_model("base", device="cpu", download_root=models_dir)
+    result = model.transcribe(samples, fp16=False, word_timestamps=True, condition_on_previous_text=False, verbose=None)
+    words = []
+    for segment in result.get("segments", []):
+        if segment.get("no_speech_prob", 0) > 0.6:
+            continue
+        for word in segment.get("words", []):
+            if word.get("probability", 1) >= 0.2:
+                words.append({"start": float(word["start"]), "end": float(word["end"]), "text": word["word"].strip()})
+    return {"language": result.get("language", ""), "words": words, "text": " ".join(word["text"] for word in words)}
+
 # --------------------------------------------------------------------------- pipeline
 def cmd_process(a) -> None:
     import numpy as np
@@ -397,7 +414,7 @@ def cmd_process(a) -> None:
     progress("Analysing tempo", 0.61)
     beat_src = stems.get("drums") if "drums" in stems and rms(stems["drums"]) > 0.01 else mix
     tempo, beats, meter, downbeat = tempo_and_beats(beat_src.mean(0))
-    analysis = {"tempo": round(tempo), "beatOffset": beats[0] if beats else 0.0, "downbeat": round(downbeat, 4), "timeSig": {"num": meter, "den": 4}, "beats": [round(b, 4) for b in beats], "device": device, "stems": [], "notes": {}}
+    analysis = {"duration": mix.shape[1] / SR, "tempo": round(tempo), "beatOffset": beats[0] if beats else 0.0, "downbeat": round(downbeat, 4), "timeSig": {"num": meter, "den": 4}, "beats": [round(b, 4) for b in beats], "device": device, "stems": [], "notes": {}}
 
     names = [n for n in stems if rms(stems[n]) / (mix_rms + 1e-9) > 0.04]
     skipped = [n for n in stems if n not in names]
@@ -433,9 +450,19 @@ def cmd_process(a) -> None:
     n = max(1, len(jobs))
     for i, (name, f, family, audio, extra) in enumerate(jobs):
         base = 0.62 + 0.35 * (i / n)
-        kind, conf, traits = classify(family, audio, mix_rms)
+        kind, conf, traits = ("singer", 1.0, {}) if family == "vocals" else classify(family, audio, mix_rms)
+        if family == "vocals":
+            progress("Transcribing the singer’s words", base, "Whisper · local processing")
+            try:
+                transcript = transcribe_words(audio, a.models_dir)
+            except Exception as error:
+                log("Word transcription failed:", error)
+                transcript = {"language": "", "words": [], "text": "", "error": str(error)}
+            analysis.setdefault("lyrics", {})[name] = transcript
         traits.update(extra)
         analysis["stems"].append({"name": name, "file": f, "kind": kind, "confidence": round(conf, 2), "traits": traits})
+        if family == "vocals":
+            continue
         if family == "drums":
             progress("Transcribing drums", base, "kick · snare · hi-hat · cymbals")
             analysis["drums"] = transcribe_drums(audio, stem_dir if a.drums else None)
@@ -455,6 +482,8 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     prepare = sub.add_parser("prepare-model")
+    words = sub.add_parser("prepare-words")
+    words.add_argument("--models-dir", required=True)
     prepare.add_argument("--model", default="htdemucs_6s")
     p = sub.add_parser("process")
     p.add_argument("--input", required=True)
@@ -462,12 +491,16 @@ def main() -> None:
     p.add_argument("--model", default="htdemucs_6s")
     p.add_argument("--device", default="auto")
     p.add_argument("--drums", action="store_true")
+    p.add_argument("--models-dir", default=None)
     p.add_argument("--sources", nargs="+", choices=["vocals", "drums", "bass", "guitar", "piano", "other"])
     p.add_argument("--stems-dir", default=None, help="use pre-separated stems instead of running Demucs")
     a = ap.parse_args()
     try:
         if a.cmd == "status":
             cmd_status()
+        elif a.cmd == "prepare-words":
+            import whisper
+            whisper.load_model("base", device="cpu", download_root=a.models_dir)
         elif a.cmd == "prepare-model":
             from demucs.pretrained import get_model
 

@@ -40,7 +40,6 @@ export const SOUND_PACKS: SoundPack[] = [
   musyngKite('dist', 'Distortion Guitar', 'distortion_guitar', 40, 88),
   musyngKite('bass', 'Finger Bass', 'electric_bass_finger', 23, 67),
   musyngKite('synthbass', 'Synth Bass', 'synth_bass_1', 24, 72),
-  musyngKite('voice', 'Choir “Aah”', 'choir_aahs', 40, 84),
   musyngKite('strings', 'String Ensemble', 'string_ensemble_1', 28, 100),
   musyngKite('brass', 'Brass Section', 'brass_section', 34, 84),
   musyngKite('reed', 'Flute', 'flute', 59, 98),

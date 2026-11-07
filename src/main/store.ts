@@ -75,7 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pythonPath: '',
   ytDlpPath: '',
   device: 'auto',
-  separationModel: 'htdemucs_6s',
+  separationModel: 'htdemucs_ft',
   drumSplit: true,
   autoProcess: false,
   metronomeVolume: 0.6,

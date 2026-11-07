@@ -186,6 +186,7 @@ export const useProject = create<EditorState>((set, get) => {
     inputNote: (pitch, o = {}) => {
       const st = get()
       const part = currentPart(st)
+      if (part?.kind === "singer") return
       if (st.inputMode === 'play' || !part || !st.cursor) { player.preview(part ?? null, pitch, o.velocity ?? 96); return }
       quiet = !!o.silent
       try {

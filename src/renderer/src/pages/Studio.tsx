@@ -4,6 +4,7 @@ import { TRANSCRIPTION_SOURCES, type InstrumentKind, type Project, type Transcri
 import { applyRhythmEstimate, detectedBpm } from '@shared/rhythm'
 import { useApp, pendingProcess } from '@/store/app'
 import Rack from './studio/Rack'
+import VocalWords from './studio/VocalWords'
 import { useProject } from '@/store/project'
 import { player } from '@/audio/player'
 import { api } from '@/lib/api'
@@ -128,6 +129,7 @@ export default function Studio({ projectId }: { projectId: string }) {
   const zoom = p.view?.zoom ?? 1
   const loop = player.opts.loopOn ? player.opts.loop : null
   const hasParts = s.parts.length > 0
+  const singerView = s.parts.some((part) => part.kind === "singer") && (s.parts.every((part) => part.kind === "singer") || s.parts.find((part) => part.id === p.view?.part)?.kind === "singer")
   const editArpeggio = (partId: string, eventId: string) => setRollTarget({ partId, eventId })
   const rollChord = rollTarget && s.parts.find((part) => part.id === rollTarget.partId)?.measures
     .flatMap((m) => m.events).find((event) => event.id === rollTarget.eventId)
@@ -262,7 +264,7 @@ export default function Studio({ projectId }: { projectId: string }) {
         </aside>
         <div className="w-1 -ml-0.5 cursor-col-resize hover:bg-accent/40 z-10" onMouseDown={dragSide} />
         <section className="flex-1 min-w-0 flex flex-col">
-          {hasParts ? (
+          {hasParts && !singerView ? (
             <>
               <Toolbar project={p} onEditArpeggio={editArpeggio} onTranspose={() => setTransposeTarget('score')} />
               <div className="flex-1 min-h-0"><ScoreView project={p} loop={loop} onEditArpeggio={editArpeggio} /></div>
@@ -273,9 +275,10 @@ export default function Studio({ projectId }: { projectId: string }) {
                 </>
               )}
             </>
-          ) : (
+          ) : !hasParts ? (
             <EmptyStudio project={p} running={!!job || !!installJob} onTranscribe={startTranscription} onEditRhythm={setRhythmField} />
-          )}
+          ) : null}
+          {hasParts && <VocalWords project={p} expanded={singerView} />}
           {hasParts && p.audio && <div className="shrink-0 border-t border-line px-4 py-1 bg-panel/30"><Waveform project={p} height={34} /></div>}
         </section>
       </div>
@@ -345,8 +348,8 @@ function TranscriptionDialog({ onClose, onStart, embedded = false }: { embedded?
   const [auto, setAuto] = useState(true)
   const [selected, setSelected] = useState<TranscriptionSource[]>([])
   const [hints, setHints] = useState<NonNullable<Project["instrumentHints"]>>({})
-  const choices: Partial<Record<TranscriptionSource, InstrumentKind[]>> = { guitar: ["acoustic-guitar", "clean-guitar", "distorted-guitar"], piano: ["piano", "epiano", "organ"], other: ["strings", "brass", "woodwinds", "synth", "vocals"] }
-  const labels = { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano / keys', other: 'Other instruments' }
+  const choices: Partial<Record<TranscriptionSource, InstrumentKind[]>> = { guitar: ["acoustic-guitar", "clean-guitar", "distorted-guitar"], piano: ["piano", "epiano", "organ"], other: ["strings", "brass", "woodwinds", "synth"] }
+  const labels = { vocals: 'Singer / vocals', drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano / keys', other: 'Other instruments' }
   const content = (<>
       <div className="seg w-fit mb-3" role="group" aria-label="Instrument detection">
         <button aria-pressed={auto} className={cx(auto && 'on')} onClick={() => { setAuto(true); setSelected([]); setHints({}) }}>Detect automatically</button>

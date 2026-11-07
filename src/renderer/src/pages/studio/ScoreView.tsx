@@ -33,10 +33,11 @@ function identity(o: object): number {
 
 export function visibleParts(p: Project): Part[] {
   const sel = p.view?.part ?? 'all'
-  if (sel === 'all') return p.score.parts
+  if (sel === 'all') return p.score.parts.filter((part) => part.kind !== 'singer')
   const part = p.score.parts.find((x) => x.id === sel)
-  if (!part) return p.score.parts
-  return part.group ? p.score.parts.filter((x) => x.group === part.group) : [part]
+  if (!part) return p.score.parts.filter((part) => part.kind !== 'singer')
+  if (part.kind === 'singer') return []
+  return part.group ? p.score.parts.filter((x) => x.group === part.group && x.kind !== "singer") : [part]
 }
 
 export default function ScoreView({ project, loop, onEditArpeggio }: { project: Project; loop: { from: number; to: number } | null; onEditArpeggio: (partId: string, eventId: string) => void }) {

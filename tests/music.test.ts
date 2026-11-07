@@ -329,3 +329,17 @@ describe("Transcription leading rests", () => {
     expect(result.score.parts[0].measures[0].events.find((event) => !event.rest)?.start).toBe(0)
   })
 })
+
+describe("Singer transcription", () => {
+  it("keeps words and the isolated recording without generating notes", () => {
+    const lyrics = { language: "en", text: "Hello", words: [{ start: 0.2, end: 0.8, text: "Hello" }] }
+    const analysis = { tempo: 120, beatOffset: 0, duration: 4, device: "cpu", stems: [{ name: "vocals", file: "stems/vocals.wav", kind: "vocals", confidence: 1 }], notes: { vocals: [{ s: 0.2, e: 0.8, p: 65, v: 95 }] }, lyrics: { vocals: lyrics } } as Parameters<typeof analysisToScore>[0]
+    const { score } = analysisToScore(analysis, "Song", "", { num: 4, den: 4 })
+    expect(score.parts[0].kind).toBe("singer")
+    expect(score.parts[0].name).toBe("Singer")
+    expect(score.parts[0].stem).toBe("stems/vocals.wav")
+    expect(score.parts[0].playback).toBe("audio")
+    expect(score.parts[0].lyrics).toEqual(lyrics)
+    expect(score.parts[0].measures.flatMap((measure) => measure.events).every((event) => event.rest)).toBe(true)
+  })
+})

@@ -218,7 +218,7 @@ export default function PartsPanel({ project }: { project: Project }) {
                   )}
                   <div className="flex items-center gap-1.5 text-[11px] text-faint">
                     {p.vstInstrument ? <button className="truncate hover:text-accent" title="Open plug-in editor" onClick={(event) => { event.stopPropagation(); void editVst(p) }}>{p.vstInstrument.plugin.name}</button> :
-                      <span className="truncate">{soundLabel(soundFor(p))}</span>}
+                      <span className="truncate">{p.kind === "singer" ? "Isolated vocal recording" : soundLabel(soundFor(p))}</span>}
                     <PluginBadge part={p} />
                     {p.classification && <Confidence value={p.classification.confidence} />}
                   </div>

@@ -21,7 +21,6 @@ export const SOUNDS: { id: BuiltinSoundId; label: string; for: InstrumentKind[] 
   { id: 'bass', label: 'Finger Bass', for: ['bass'] },
   { id: 'synthbass', label: 'Synth Bass', for: ['bass', 'synth'] },
   { id: 'drums', label: 'Studio Kit', for: ['drums'] },
-  { id: 'voice', label: 'Choir “Aah”', for: ['vocals'] },
   { id: 'strings', label: 'String Ensemble', for: ['strings'] },
   { id: 'brass', label: 'Brass Section', for: ['brass'] },
   { id: 'reed', label: 'Flute', for: ['woodwinds'] },
@@ -32,7 +31,7 @@ export const SOUNDS: { id: BuiltinSoundId; label: string; for: InstrumentKind[] 
 
 export const DEFAULT_SOUND: Record<InstrumentKind, BuiltinSoundId> = {
   piano: 'piano', epiano: 'epiano', organ: 'organ', synth: 'lead', 'acoustic-guitar': 'steel', 'clean-guitar': 'clean',
-  'distorted-guitar': 'dist', bass: 'bass', drums: 'drums', vocals: 'voice', strings: 'strings', brass: 'brass', woodwinds: 'reed', other: 'piano'
+  'distorted-guitar': 'dist', bass: 'bass', drums: 'drums', vocals: 'voice', singer: 'sine', strings: 'strings', brass: 'brass', woodwinds: 'reed', other: 'piano'
 }
 
 /** Display name of any sound, built-in or your own. */

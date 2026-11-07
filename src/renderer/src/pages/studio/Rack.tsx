@@ -47,6 +47,7 @@ export default function Rack() {
     <Modal open onClose={close} width={780} title={<span>Sound & effects <span className="text-muted font-sans text-[14px] ml-1">· {part.name}</span></span>}>
       <div className="grid grid-cols-[250px_1fr] gap-5">
         <div>
+          {part.kind === "singer" && <p className="text-[12px] text-muted mb-3">This track plays the isolated singer recording. Its lyric timeline shows the recognized words.</p>}
           <div className="label mb-2">Instrument</div>
           <label className="block mb-2"><div className="label mb-1">Track name</div><input key={part.id + part.name} className="field !h-8" defaultValue={part.name} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} onBlur={(e) => {
             const name = e.currentTarget.value.trim()

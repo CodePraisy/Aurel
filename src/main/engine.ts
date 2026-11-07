@@ -98,13 +98,14 @@ export async function installEngineJob(ctx: JobCtx): Promise<EngineStatus> {
   }
   if (!status.ready) throw new Error(status.message ?? 'Engine verification failed')
   const marker = join(root, ENGINE_READY_FILE)
-  if (!fs.existsSync(marker)) {
+  if (!fs.existsSync(marker) || fs.readFileSync(marker, "utf8") !== DEFAULT_SETTINGS.separationModel) {
     const model = DEFAULT_SETTINGS.separationModel
     await run(py.cmd, [paths.engineScript, 'prepare-model', '--model', model], 'Downloading the default separation model', {
       ...process.env, PYTHONIOENCODING: 'utf-8', TORCH_HOME: join(root, 'models')
     })
     writeAtomic(marker, model)
   }
+  await run(py.cmd, [paths.engineScript, "prepare-words", "--models-dir", join(root, "models", "whisper")], "Preparing the Whisper word transcription model", { ...process.env, PYTHONIOENCODING: "utf-8" })
   cached = null
   return status
 }
@@ -118,7 +119,7 @@ export async function processJob(ctx: JobCtx, projectId: string, sources?: Trans
   const project = loadProjectFile(projectId)
   if (!project?.audio) throw new Error('This project has no audio to process.')
   const s = getSettings()
-  const model = sources?.some((source) => source === 'guitar' || source === 'piano') ? DEFAULT_SETTINGS.separationModel : s.separationModel
+  const model = sources?.some((source) => source === 'guitar' || source === 'piano') ? 'htdemucs_6s' : s.separationModel
   const dir = paths.project(projectId)
   const setStatus = (status: NonNullable<typeof project.analysis>['status'], error?: string) => {
     const p = loadProjectFile(projectId)
@@ -154,6 +155,7 @@ export async function processJob(ctx: JobCtx, projectId: string, sources?: Trans
       '--input', join(dir, project.audio.original),
       '--out', dir,
       '--model', model,
+      '--models-dir', join(paths.engineRoot, 'models', 'whisper'),
       ...(sources?.length ? ['--sources', ...sources] : []),
       '--device', device,
       ...(s.drumSplit ? ['--drums'] : [])

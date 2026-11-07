@@ -76,7 +76,7 @@ async function renderPluginPart(project: Project, part: Part, route: Route, tm: 
 
 async function schedulePart(ctx: OfflineAudioContext, project: Project, part: Part, tm: TempoMap, t0: number, t1: number, options: RenderOpts, out: AudioNode) {
   const startSec = tm.tickToSec(t0)
-  if (options.useAudioStems && part.playback === 'audio' && part.stem && project.audio) {
+  if ((options.useAudioStems || part.kind === "singer") && part.playback === 'audio' && part.stem && project.audio) {
     const relative = options.transpose ? await api.media.pitchShift(project.id, part.stem, options.transpose) : part.stem
     const buf = await loadAudio(api.project.url(project.id, relative), ctx.sampleRate)
     const audioStart = project.audio.offset + startSec
@@ -132,7 +132,7 @@ export async function renderWav(project: Project, o: RenderOpts): Promise<Uint8A
     gain.connect(pan).connect(master)
     // VST3 effects run first (in the host), then the built-in ones, exactly as in playback
     const builtins = orderChain(fxFor(part)).filter((slot) => slot.type !== 'vst3')
-    const route = routeFor(part, !!project.audio && o.useAudioStems)
+    const route = routeFor(part, !!project.audio && (o.useAudioStems || part.kind === "singer"))
     if (route === 'vsti' || route === 'stemfx' || route === 'capture') {
       const src = ctx.createBufferSource()
       src.buffer = await renderPluginPart(project, part, route, tm, t0, t1, o, ctx.length)

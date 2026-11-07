@@ -231,14 +231,14 @@ export default function SettingsPage({ section }: { section?: string }) {
               <h3 className="font-display text-[17px] mt-6 mb-2">Credits</h3>
               <div className="card divide-y divide-line text-[12.5px]">
                 {[...new Set(SOUND_PACKS.map((p) => p.credit))].map((c) => <div key={c} className="px-4 py-2.5 text-muted">{c}</div>)}
-                <div className="px-4 py-2.5 text-muted">Demucs (MIT) by Meta AI · Basic Pitch (Apache 2.0) by Spotify · librosa (ISC) · VexFlow (MIT) · FFmpeg (GPL) · yt-dlp (Unlicense) · Deno (MIT) · uv (MIT)</div>
+                <div className="px-4 py-2.5 text-muted">Demucs (MIT) by Meta AI · Basic Pitch (Apache 2.0) by Spotify · Whisper (MIT) by OpenAI · librosa (ISC) · VexFlow (MIT) · FFmpeg (GPL) · yt-dlp (Unlicense) · Deno (MIT) · uv (MIT)</div>
               </div>
             </>
           )}
           {sec === 'engine' && (
             <>
               <h2 className="font-display text-[22px] mb-1">AI Engine</h2>
-              <p className="text-muted mb-4 leading-relaxed">Demucs separates instruments; Spotify’s Basic Pitch converts each one to notes. Everything runs locally on your computer — after setup, no internet is needed.</p>
+              <p className="text-muted mb-4 leading-relaxed">Demucs separates the stems. Basic Pitch transcribes instrument notes, and Whisper recognizes the singer’s words. Everything runs locally on your computer — after setup, no internet is needed.</p>
               <div className="card p-4 mb-4">
                 <div className="flex items-center gap-3">
                   <div className={cx('h-2.5 w-2.5 rounded-full', engine?.ready ? 'bg-ok' : 'bg-warn')} />
@@ -264,7 +264,7 @@ export default function SettingsPage({ section }: { section?: string }) {
                 {!engine?.ready && <p className="text-[12px] text-faint mt-3 leading-relaxed">Nothing to install by hand: Aurel downloads its own private Python, PyTorch (the GPU build if an NVIDIA card is found) and the models — roughly 3–5 GB, once. It also starts automatically the first time you press Transcribe.</p>}
               </div>
               <Row title="Processing device"><div className="seg">{(['auto', 'cuda', 'cpu'] as const).map((d) => <button key={d} className={cx(s.device === d && 'on')} onClick={() => set({ device: d })}>{d === 'auto' ? 'Auto' : d.toUpperCase()}</button>)}</div></Row>
-              <Row title="Separation model" desc="6-source separates guitar and piano too. Fine-tuned 4-source is higher quality but merges guitar/piano into “other”.">
+              <Row title="Separation model" desc="Fine-tuned 4-source separates vocals, bass, drums and music. It takes longer. Choose 6-source to separate guitar and piano too.">
                 <Select width={224} value={s.separationModel} onChange={(v) => set({ separationModel: v })} options={[{ value: 'htdemucs_6s', label: 'HT-Demucs 6-source' }, { value: 'htdemucs', label: 'HT-Demucs 4-source' }, { value: 'htdemucs_ft', label: 'HT-Demucs fine-tuned' }]} />
               </Row>
               <Row title="Split drums" desc="Also write approximate kick / snare / hi-hat stems (frequency-band split)."><Toggle on={s.drumSplit} onChange={(v) => set({ drumSplit: v })} /></Row>
@@ -325,7 +325,7 @@ export default function SettingsPage({ section }: { section?: string }) {
                 <div className="font-medium">What to expect from automatic transcription</div>
                 <ul className="list-disc pl-5 space-y-1.5 text-muted">
                   <li><b className="text-fg">Separation</b> is very good for vocals, drums and bass; guitar and piano stems often contain bleed from each other. Multiple guitars are only split when they are panned apart.</li>
-                  <li><b className="text-fg">Pitch</b> is reliable for clear monophonic lines (bass, vocals, lead). Dense chords, distorted guitar and reverb-heavy mixes produce extra or missing notes.</li>
+                  <li><b className="text-fg">Pitch</b> is reliable for clear monophonic lines (bass and instrumental leads). Dense chords, distorted guitar and reverb-heavy mixes produce extra or missing notes.</li>
                   <li><b className="text-fg">Rhythm</b> is quantized to 16ths at one detected tempo. Triplets, swing, rubato and tempo changes are not captured; the first beat is assumed to be a downbeat.</li>
                   <li><b className="text-fg">Drums</b> are detected by frequency band: kick, snare, hi-hat and cymbals. Toms and ghost notes are mostly missed.</li>
                   <li><b className="text-fg">Tab</b> fingerings are chosen automatically for playability, not from the recording. Bends, slides and other techniques are not detected — add them by hand.</li>
