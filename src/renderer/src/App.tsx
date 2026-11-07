@@ -167,7 +167,7 @@ export default function App() {
       {settings.theme === 'sakura'
         ? <SakuraScene dim={dim} petals={settings.particles} />
         : <div className={cx('theme-scene', dim && 'theme-scene-dim')} aria-hidden="true">
-            <NoteField count={settings.particles} dim={dim} theme={settings.theme} accent={settings.accent} still={still} />
+            <NoteField count={settings.particles} dim={dim} theme={settings.theme} accent={settings.accent} still={still} speed={settings.particleSpeed ?? 1} scale={settings.particleSize ?? 1} />
           </div>}
       <Sidebar version={version} checking={!!updateStatus?.checking} onCheckUpdates={() => void checkForUpdates()} />
 

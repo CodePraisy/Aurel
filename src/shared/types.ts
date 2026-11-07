@@ -49,7 +49,7 @@ export interface Classification {
   traits?: Record<string, string>
 }
 
-export interface VocalWord { start: number; end: number; text: string }
+export interface VocalWord { start: number; end: number; text: string; b?: number }
 export interface VocalTranscript { error?: string; language: string; words: VocalWord[]; text: string }
 
 export interface Part {
@@ -181,7 +181,22 @@ export interface EngineStatus {
   cuda: boolean
   gpuName?: string
   ready: boolean
+  /** The newer transcription models (Transkun, Beat This!, CREPE, ADTOF) are installed. */
+  upgraded?: boolean
   message?: string
+}
+
+export type TranscribeQuality = 'fast' | 'balanced' | 'best'
+export type RhythmDetail = 'simple' | 'standard' | 'detailed'
+
+/** The beat grid the engine found: one time per beat, beat 0 on the first bar line. */
+export interface EngineGrid {
+  times: number[]
+  meter: number // tracked beats per bar
+  bpm: number
+  division?: 'binary' | 'ternary'
+  swing?: number // where the off-beat eighth falls (0.5 = straight)
+  timeSig?: { num: number; den: number }
 }
 
 export interface UpdateInfo {
@@ -219,6 +234,19 @@ export interface Settings {
   device: 'auto' | 'cuda' | 'cpu'
   separationModel: 'htdemucs_6s' | 'htdemucs' | 'htdemucs_ft'
   drumSplit: boolean
+  // ---- transcription (engine 2)
+  transcribeQuality: TranscribeQuality
+  noteSensitivity: number // 0 = only clear notes … 1 = catch quiet notes too
+  rhythmDetail: RhythmDetail
+  fillGaps: boolean // hold notes over tiny gaps instead of writing short rests
+  straightSwing: boolean // write swung eighths as straight eighths
+  followTempo: boolean // score tempo follows the recording bar by bar
+  vocalMelody: boolean // write the singer's melody as notes under the words
+  lyricWords: boolean // recognise the singer's words
+  lyricsModel: 'base' | 'small'
+  lyricsLanguage: string // '' = detect
+  drumModel: 'adtof' | 'basic'
+  guitarChordLimit: number // most notes in one guitar chord
   autoProcess: boolean
   metronomeVolume: number
   countInBars: number
@@ -255,6 +283,9 @@ export interface Settings {
   autoSetup: boolean // download sounds + tools on first run
   setupDone: boolean
   particles: number // floating notes in the background, 0 = none
+  particleSpeed: number // 1 = normal drift
+  particleSize: number // 1 = normal size
+  openAfterImport: boolean // show a new recording in the studio as soon as it is imported
   deleteMode: 'rest' | 'shift' // what Delete does to a note: leave a rest, or pull the following notes back
   sidebarOpen: boolean // sidebar shows names and sessions, or icons only
   sessions: SessionTab[] // pieces open in the sidebar, in order
@@ -273,6 +304,10 @@ export interface ExportAudioSettings {
 }
 
 export interface EngineAnalysis {
+  engine?: number
+  quality?: TranscribeQuality
+  grid?: EngineGrid
+  methods?: Record<string, string>
   duration?: number
   lyrics?: Record<string, VocalTranscript>
   tempo: number
@@ -288,6 +323,7 @@ export interface EngineAnalysis {
     confidence: number
     traits?: Record<string, string>
   }[]
-  notes: Record<string, { s: number; e: number; p: number; v: number; b?: number }[]>
-  drums?: { t: number; piece: string; v: number }[]
+  /** s/e in seconds; b/be in beats on the grid (engine 2) */
+  notes: Record<string, { s: number; e: number; p: number; v: number; b?: number; be?: number }[]>
+  drums?: { t: number; piece: string; v: number; b?: number }[]
 }

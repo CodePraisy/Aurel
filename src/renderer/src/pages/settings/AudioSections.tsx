@@ -11,9 +11,9 @@ import { Select } from '@/components/menu'
 import { cx, Toggle } from '@/components/ui'
 import { usePlayer } from '../studio/Transport'
 
-export function Row({ title, desc, children }: { title: string; desc?: ReactNode; children: ReactNode }) {
+export function Row({ id, title, desc, children }: { id?: string; title: string; desc?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-6 py-3.5 border-b border-line last:border-0">
+    <div data-setting={id} className="setting-row flex items-center gap-6 py-3.5 border-b border-line last:border-0">
       <div className="flex-1 min-w-0"><div className="font-medium">{title}</div>{desc && <div className="text-muted text-[12.5px] mt-0.5 leading-relaxed">{desc}</div>}</div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -32,13 +32,13 @@ export function DeviceFormat({ s, set }: { s: Settings; set: (p: Partial<Setting
   const rate = info?.sampleRate ?? 48000
   return (
     <>
-      <Row title="Sample rate" desc={<>Match your audio interface to avoid resampling. <b>Device</b> uses whatever Windows is set to{info ? ` (now ${info.sampleRate / 1000} kHz)` : ''}.</>}>
+      <Row id="sampleRate" title="Sample rate" desc={<>Match your audio interface to avoid resampling. <b>Device</b> uses whatever Windows is set to{info ? ` (now ${info.sampleRate / 1000} kHz)` : ''}.</>}>
         <div className="seg">{rates.map((r) => <button key={r.v} className={cx(s.sampleRate === r.v && 'on')} onClick={() => set({ sampleRate: r.v })}>{r.l}</button>)}</div>
       </Row>
-      <Row title="Buffer size" desc="Smaller feels tighter when you play a MIDI keyboard; larger avoids crackles on a busy computer.">
+      <Row id="bufferSize" title="Buffer size" desc="Smaller feels tighter when you play a MIDI keyboard; larger avoids crackles on a busy computer.">
         <div className="seg">{sizes.map((n) => <button key={n} className={cx(s.bufferSize === n && 'on')} title={ms((n / rate) * 1000)} onClick={() => set({ bufferSize: n })}>{n}</button>)}</div>
       </Row>
-      <Row title="Reported latency" desc="What the audio device reports, plus the time Aurel renders VST3 plug-ins ahead of playback. Playback timing is compensated; this is the delay you feel when playing live.">
+      <Row id="latency" title="Reported latency" desc="What the audio device reports, plus the time Aurel renders VST3 plug-ins ahead of playback. Playback timing is compensated; this is the delay you feel when playing live.">
         {info ? (
           <div className="text-right text-[12.5px] tabular-nums leading-relaxed">
             <div>Device buffer {ms(info.buffer)}</div>
@@ -66,7 +66,7 @@ export function MidiSection({ s, set }: { s: Settings; set: (p: Partial<Settings
       <h2 className="font-display text-[22px] mb-1">MIDI</h2>
       <p className="text-muted mb-4 leading-relaxed">Plug in a USB MIDI keyboard (or pair a Bluetooth one in Windows) and play. It is picked up automatically, even after Aurel has started.</p>
       {midi.error && <p role="alert" className="flex items-center gap-2 text-bad text-[12.5px] mb-3"><AlertTriangle size={14} className="shrink-0" /> <span className="flex-1">{midi.error}</span> <button className="btn-soft !h-7" onClick={() => void midi.start()}>Try again</button></p>}
-      <Row title="Input device" desc={midi.devices.length ? `${midi.devices.length} connected.` : 'No MIDI devices found. Connect one and it will appear here.'}>
+      <Row id="midiInput" title="Input device" desc={midi.devices.length ? `${midi.devices.length} connected.` : 'No MIDI devices found. Connect one and it will appear here.'}>
         <div className="flex items-center gap-3">
           <span className={cx('flex items-center gap-1.5 text-[12px]', receiving ? 'text-ok' : 'text-faint')} aria-live="polite"><span className={cx('h-2 w-2 rounded-full', receiving ? 'bg-ok' : 'bg-fg/20')} />{receiving ? 'Receiving' : 'Idle'}</span>
           <Select width={240} value={s.midiInput} onChange={(v) => set({ midiInput: v })} options={[
@@ -76,15 +76,15 @@ export function MidiSection({ s, set }: { s: Settings; set: (p: Partial<Settings
           ]} />
         </div>
       </Row>
-      <Row title="Input channel" desc="Listen to one channel when a keyboard sends on several (split or layered setups).">
+      <Row id="midiChannel" title="Input channel" desc="Listen to one channel when a keyboard sends on several (split or layered setups).">
         <Select width={140} value={String(s.midiChannel)} onChange={(v) => set({ midiChannel: Number(v) })} options={[{ value: '0', label: 'All channels' }, ...Array.from({ length: 16 }, (_, i) => ({ value: String(i + 1), label: `Channel ${i + 1}` }))]} />
       </Row>
-      <Row title="Plays" desc="Which part the keyboard sounds like. It uses that part's instrument, VST3 plug-ins and effects.">
+      <Row id="midiPlays" title="Plays" desc="Which part the keyboard sounds like. It uses that part's instrument, VST3 plug-ins and effects.">
         <Select width={200} value={s.auditionTrack} onChange={(v) => set({ auditionTrack: v })} options={[
           { value: 'selected', label: 'The selected part' }, { value: 'first', label: 'Always the first part' }, { value: 'piano', label: 'Built-in grand piano' }
         ]} />
       </Row>
-      <Row title="Notes you play" desc="Write adds them to the score at the cursor (keys pressed together become a chord). Play only lets you practise without writing. Switch any time in the studio.">
+      <Row id="midiNotes" title="Notes you play" desc="Write adds them to the score at the cursor (keys pressed together become a chord). Play only lets you practise without writing. Switch any time in the studio.">
         <div className="seg">{(['write', 'play'] as const).map((m) => <button key={m} className={cx(s.inputMode === m && 'on')} onClick={() => setMode(m)}>{m === 'write' ? 'Write notes' : 'Play only'}</button>)}</div>
       </Row>
     </>
@@ -168,5 +168,5 @@ export function PluginsSection({ s }: { s: Settings }) {
 }
 
 export function EffectTails({ s, set }: { s: Settings; set: (p: Partial<Settings>) => void }) {
-  return <Row title="Effect tails after stopping" desc="Let reverb and delay ring out when you pause or stop. Turn off to cut to silence immediately."><Toggle on={s.effectTails} onChange={(v) => set({ effectTails: v })} /></Row>
+  return <Row id="effectTails" title="Effect tails after stopping" desc="Let reverb and delay ring out when you pause or stop. Turn off to cut to silence immediately."><Toggle on={s.effectTails} onChange={(v) => set({ effectTails: v })} /></Row>
 }

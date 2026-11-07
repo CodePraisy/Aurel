@@ -4,5 +4,6 @@ basic-pitch==0.4.0
 librosa>=0.10,<0.11
 numpy<2
 scipy>=1.10
+setuptools<70
 
 openai-whisper==20250625

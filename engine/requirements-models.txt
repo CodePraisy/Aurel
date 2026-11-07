@@ -1,0 +1,6 @@
+# Per-instrument transcription models (installed after the core engine; Aurel falls back
+# to Basic Pitch and band filters for any that fail to install).
+transkun==2.0.1            # piano and guitar notes (MIT, weights included)
+torchcrepe==0.0.24         # bass and singing pitch (MIT, weights included)
+onnxruntime>=1.18,<2       # runs the Beat This! beat and downbeat model
+adtof-pytorch @ https://github.com/xavriley/ADTOF-pytorch/archive/85c192e78f716ea0b111cc8a5ee4a8f6a3a4f8a9.zip

@@ -2,7 +2,7 @@ import { detectedBpm } from '@shared/rhythm'
 import { create } from 'zustand'
 import type { Collection, EngineAnalysis, EngineStatus, JobUpdate, LibraryEntry, Project, Settings, TranscriptionSource, UpdateInfo } from '@shared/types'
 import { api } from '@/lib/api'
-import { analysisToScore } from '@/music/quantize'
+import { analysisToScore, DEFAULT_TRANSCRIBE, type TranscribeOptions } from '@/music/quantize'
 import { player } from '@/audio/player'
 import { useProject } from './project'
 
@@ -41,6 +41,8 @@ let toastId = 0
 const requestingProcess = new Set<string>()
 const applyingProcess = new Set<string>()
 export const pendingProcess = new Map<string, TranscriptionSource[] | undefined>()
+/** The model upgrade is offered once per session; if it cannot finish, transcription uses the models already installed. */
+let upgradeTried = false
 
 export const useApp = create<AppState>((set, get) => ({
   route: { name: 'home' },
@@ -95,10 +97,12 @@ export const useApp = create<AppState>((set, get) => ({
     requestingProcess.add(projectId)
     try {
       const eng = await get().refreshEngine()
-      if (!eng.ready) {
+      if (!eng.ready || (!eng.upgraded && !upgradeTried)) {
+        upgradeTried = eng.ready
+        // a first install, or an older engine: add the per-instrument models first, then transcribe
         pendingProcess.set(projectId, sources)
         const { jobId } = await api.engine.install()
-        get().track(jobId, 'Installing the AI engine (one time, ~3–5 GB)')
+        get().track(jobId, eng.ready ? 'Adding the new transcription models (one time, ~300 MB)' : 'Installing the AI engine (one time, ~3–5 GB)')
         return
       }
       const editor = useProject.getState()
@@ -114,6 +118,17 @@ export const useApp = create<AppState>((set, get) => ({
     }
   }
 }))
+
+/** The settings that shape how detected notes are written down. */
+export function transcribeOptions(s: Settings | null | undefined): TranscribeOptions {
+  if (!s) return DEFAULT_TRANSCRIBE
+  return {
+    rhythm: { detail: s.rhythmDetail ?? 'standard', fillGaps: s.fillGaps ?? true, straightSwing: s.straightSwing ?? true },
+    followTempo: s.followTempo ?? true,
+    vocalMelody: s.vocalMelody ?? false,
+    guitarChordLimit: s.guitarChordLimit ?? 6
+  }
+}
 
 /** Turn the engine's analysis into an editable score and save it. */
 async function syncAudio(projectId: string, jobId: string): Promise<void> {
@@ -136,7 +151,8 @@ export async function applyAnalysis(projectId: string): Promise<void> {
   const a = JSON.parse(await api.project.readText(projectId, 'analysis.json')) as EngineAnalysis
   const rhythm = project.analysis?.rhythm
   const editedTempo = project.audio?.referenceTempo !== undefined
-  const grid = (rhythm || editedTempo) && project.audio ? {
+  // The engine's own beat grid wins unless the user set the tempo by hand (an import-time estimate is not a choice).
+  const grid = (editedTempo || (rhythm && !a.grid)) && project.audio ? {
     tempo: project.audio.tempoLinked ? project.audio.referenceTempo ?? detectedBpm(project) ?? project.score.tempo : project.score.tempo,
     offset: project.audio.offset
   } : undefined
@@ -147,7 +163,8 @@ export async function applyAnalysis(projectId: string): Promise<void> {
   }
   a.tempo = Math.round(a.tempo)
   const timeSig = grid ? project.score.timeSig : a.timeSig ?? project.score.timeSig
-  const { score, offset, key } = analysisToScore(a, project.score.title, project.score.composer, timeSig, grid, useApp.getState().settings?.pianoGrandStaff)
+  const settings = useApp.getState().settings
+  const { score, offset, key } = analysisToScore(a, project.score.title, project.score.composer, timeSig, grid, settings?.pianoGrandStaff, transcribeOptions(settings))
   if (editedTempo) score.tempo = project.score.tempo
   project.score = score
   project.audio = { ...project.audio!, offset, startAt: offset - (project.audio?.offset ?? 0) >= 60 / score.tempo * score.timeSig.num * 4 / score.timeSig.den ? offset : project.audio?.startAt }
@@ -175,7 +192,12 @@ api.jobs.onUpdate(async (u) => {
   setTimeout(() => useApp.setState((s) => { const j = { ...s.jobs }; delete j[u.jobId]; return { jobs: j } }), 30000)
   if (u.kind === 'sounds' || u.kind === 'tools') player.refreshSounds()
   if (u.error) {
-    if (u.kind === 'install') pendingProcess.clear()
+    if (u.kind === 'install') {
+      // an engine that works but could not take the new models still transcribes
+      const waiting = [...pendingProcess]
+      pendingProcess.clear()
+      if (upgradeTried && useApp.getState().engine?.ready) for (const [id, sources] of waiting) void useApp.getState().processProject(id, sources)
+    }
     if (u.error !== 'Cancelled') st.toast(u.error.split('\n')[0], 'error')
     if (u.kind === 'process' && info.projectId) {
       useApp.setState((s) => ({ projectRevision: { ...s.projectRevision, [info.projectId!]: (s.projectRevision[info.projectId!] ?? 0) + 1 } }))
@@ -190,7 +212,7 @@ api.jobs.onUpdate(async (u) => {
     })
     if (result.duplicate) return
     const current = useApp.getState()
-    if ((current.route.name === 'home' || current.route.name === 'library') && !current.dialog) current.go({ name: 'studio', projectId: result.projectId })
+    if (current.settings?.openAfterImport !== false && (current.route.name === 'home' || current.route.name === 'library') && !current.dialog) current.go({ name: 'studio', projectId: result.projectId })
   }
   if (u.kind === 'process' && info.projectId) {
     try {

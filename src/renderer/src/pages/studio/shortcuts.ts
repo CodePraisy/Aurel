@@ -37,7 +37,7 @@ export function useStudioKeys(enabled: boolean, onToggleLoop: () => void): void 
 
       if (k === ' ') { handled(); if (!e.repeat) player.toggle(); return }
       if (k === 'Home') { handled(); player.stop(); return }
-      if (part?.kind === 'singer') return
+      if (part?.kind === 'singer' && !part.measures.some((m) => m.events.some((ev) => !ev.rest))) return
       if (ctrl && k.toLowerCase() === 'z') { handled(); if (e.shiftKey) st.redo(); else st.undo(); return }
       if (ctrl && k.toLowerCase() === 'y') { handled(); st.redo(); return }
       if (ctrl && k.toLowerCase() === 'c') { handled(); st.copy(); return }

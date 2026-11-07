@@ -4,7 +4,7 @@ import { renderScore, playbackWaypoints, playbackX, xForTick, systemForMeasure, 
 import { measureTicks, isFretted, midiName } from '@/music/theory'
 import { diatonicShift } from '@/music/score'
 import { PPQ } from '@shared/types'
-import { lyricRows, lyricTiming } from '@/music/lyrics'
+import { LYRIC_LINE, lyricTiming, lyricWidth, placeLyrics } from '@/music/lyrics'
 import VocalWords from './VocalWords'
 import { useProject } from '@/store/project'
 import { useApp } from '@/store/app'
@@ -33,13 +33,19 @@ function identity(o: object): number {
   return id
 }
 
+/** A Singer part shows as a staff once it has notes (the sung melody); words alone stay in the lyrics view. */
+export function hasNotes(part: Part): boolean {
+  return part.measures.some((m) => m.events.some((e) => !e.rest))
+}
+const drawn = (part: Part) => part.kind !== 'singer' || hasNotes(part)
+
 export function visibleParts(p: Project): Part[] {
   const sel = p.view?.part ?? 'all'
-  if (sel === 'all') return p.score.parts.filter((part) => part.kind !== 'singer')
+  if (sel === 'all') return p.score.parts.filter(drawn)
   const part = p.score.parts.find((x) => x.id === sel)
-  if (!part) return p.score.parts.filter((part) => part.kind !== 'singer')
-  if (part.kind === 'singer') return []
-  return part.group ? p.score.parts.filter((x) => x.group === part.group && x.kind !== "singer") : [part]
+  if (!part) return p.score.parts.filter(drawn)
+  if (!drawn(part)) return []
+  return part.group ? p.score.parts.filter((x) => x.group === part.group && drawn(x)) : [part]
 }
 
 export default function ScoreView({ project, loop, onEditArpeggio }: { project: Project; loop: { from: number; to: number } | null; onEditArpeggio: (partId: string, eventId: string) => void }) {
@@ -85,7 +91,11 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
     const l = renderScore(svgHost.current, score, { parts: shown, mode, width: width - 48, zoom, colors: themeColors(), header: true,
       systemFooter: (first, last, available) => {
         const rowWords = words.filter((w) => timing.toTick(w.start) >= first * mt && timing.toTick(w.start) < (last + 1) * mt)
-        return rowWords.length ? (lyricRows(rowWords, available) + 1) * 28 : 0
+        if (!rowWords.length) return 0
+        // estimate where the words fall (in proportion to their time) to know how many lines they need
+        const span = (last - first + 1) * mt
+        const lines = Math.max(...placeLyrics(rowWords.map((w) => ({ x: ((timing.toTick(w.start) - first * mt) / span) * available, width: lyricWidth(w.text) }))).map((p) => p.line)) + 1
+        return lines * LYRIC_LINE + 18
       }
     })
     setLayout(l)
