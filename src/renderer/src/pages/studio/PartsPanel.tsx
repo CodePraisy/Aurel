@@ -13,6 +13,7 @@ import { ADDABLE } from '../Dialogs'
 import VstPicker from './VstPicker'
 import TuningEditor from './TuningEditor'
 import InstrumentColor from './InstrumentColor'
+import { instrumentAccent } from '@/music/instrumentColor'
 import { api } from '@/lib/api'
 
 /** Each instrument family has its own colour (a hue), used for its icon tile and track stripe. */
@@ -208,8 +209,8 @@ export default function PartsPanel({ project }: { project: Project }) {
                 setDragging(null)
                 setDropTarget(null)
               }}
-              style={{ ['--hue' as string]: partHue(p.kind) }}
-              className={cx('part-card group relative rounded-xl px-2.5 py-2', active && 'on', p.mute && 'muted', !groupHead && '-mt-0.5')}>
+              style={{ ['--hue' as string]: partHue(p.kind), ...instrumentAccent(p.color) }}
+              className={cx('part-card group relative rounded-xl px-2.5 py-2', p.color && 'custom-color', active && 'on', p.mute && 'muted', !groupHead && '-mt-0.5')}>
               {dropTarget?.id === p.id && <div className={cx('pointer-events-none absolute inset-x-1 h-0.5 rounded bg-accent', dropTarget.after ? 'bottom-0' : 'top-0')} />}
               <div className="flex items-center gap-2">
                 <span className="cursor-grab text-faint hover:text-accent active:cursor-grabbing -ml-1.5 w-0 group-hover:w-3.5 opacity-0 group-hover:opacity-100 transition-all overflow-hidden" title="Drag to reorder instrument" draggable
@@ -218,8 +219,7 @@ export default function PartsPanel({ project }: { project: Project }) {
                     e.dataTransfer.effectAllowed = 'move'
                     setDragging(p.id)
                   }} onDragEnd={() => { setDragging(null); setDropTarget(null) }}><GripVertical size={14} /></span>
-                <button className="part-icon shrink-0" style={{ color: p.color }} aria-label={`Show ${p.name}`} title={`Show ${p.name}`} onClick={() => selectPart(p)}>{familyIcon(p.kind)}</button>
-                <button className="h-2.5 w-2.5 rounded-full shrink-0 border border-fg/20" style={{ backgroundColor: p.color ?? 'rgb(var(--accent))' }} title={`Change color for ${p.name}`} aria-label={`Change color for ${p.name}`} onClick={() => setColorPart(p.id)} />
+                <button className="part-icon shrink-0" aria-label={`Change color for ${p.name}`} title={`Change color for ${p.name}`} onClick={() => setColorPart(p.id)}>{familyIcon(p.kind)}</button>
                 <div className="flex-1 min-w-0" onClick={() => selectPart(p)}>
                   {renaming === p.id ? (
                     <input autoFocus className="field !h-6 !px-1.5 !text-[12.5px]" defaultValue={p.name} onBlur={(e) => { st.updatePart(p.id, { name: e.target.value.trim() || p.name }); setRenaming(null) }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(null) }} />

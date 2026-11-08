@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -83,28 +83,53 @@ export function moveMenuFocus(event: React.KeyboardEvent, buttons: HTMLElement[]
 export function Popover({ trigger, children, align = 'left', side = 'bottom', width = 240 }: { trigger: (open: () => void, isOpen: boolean) => ReactNode; children: (close: () => void) => ReactNode; align?: 'left' | 'right'; side?: 'top' | 'bottom'; width?: number }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ left: 0, top: 0, width, maxHeight: 400 })
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      if (!ref.current || !panel.current) return
+      const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1
+      const r = ref.current.getBoundingClientRect()
+      const viewportW = window.innerWidth / zoom, viewportH = window.innerHeight / zoom
+      const panelW = Math.min(width, viewportW - 16)
+      const height = Math.min(panel.current.scrollHeight + 2, viewportH - 16)
+      const below = viewportH - r.bottom / zoom - 6, above = r.top / zoom - 6
+      const up = side === 'top' ? above >= height || above > below : below < height && above > below
+      const maxHeight = Math.max(40, Math.min(viewportH - 16, up ? above - 8 : below - 8))
+      setPosition({ left: Math.max(8, Math.min((align === 'right' ? r.right / zoom - panelW : r.left / zoom), viewportW - panelW - 8)),
+        top: Math.max(8, up ? r.top / zoom - Math.min(height, maxHeight) - 6 : r.bottom / zoom + 6), width: panelW, maxHeight })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    const observer = new ResizeObserver(place)
+    if (panel.current) observer.observe(panel.current)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); observer.disconnect() }
+  }, [open, align, side, width])
   useEffect(() => {
     if (!open) return
     const h = (e: MouseEvent) => {
       const target = e.target as Element
       const selectId = target.closest<HTMLElement>('[data-select-popup]')?.dataset.selectPopup
-      if (!ref.current?.contains(target) && !(selectId && ref.current?.contains(document.getElementById(selectId)))) setOpen(false)
+      const selectTrigger = selectId ? document.getElementById(selectId) : null
+      if (!ref.current?.contains(target) && !panel.current?.contains(target) && !(selectTrigger && (ref.current?.contains(selectTrigger) || panel.current?.contains(selectTrigger)))) setOpen(false)
     }
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
     window.addEventListener('mousedown', h)
     window.addEventListener('keydown', key)
     return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', key) }
   }, [open])
-  const panel = useRef<HTMLDivElement>(null)
   return (
     <div className="relative" ref={ref} data-keyboard-menu={open ? "" : undefined} onKeyDown={(event) => {
       if (open && panel.current) moveMenuFocus(event, Array.from(panel.current.querySelectorAll("button:not(:disabled)")))
     }}>
       {trigger(() => setOpen((o) => !o), open)}
-      {open && (
-        <div ref={panel} className={cx('absolute z-40 card shadow-xl p-1.5', side === 'top' ? 'animate-pop-up' : 'animate-pop-down', side === 'top' ? 'bottom-full mb-1.5 max-h-[65vh] overflow-y-auto' : 'mt-1.5', align === 'right' ? 'right-0' : 'left-0')} style={{ width }}>
+      {open && createPortal(
+        <div ref={panel} data-popover-panel data-keyboard-menu="" className={cx('fixed z-[110] no-drag card shadow-xl p-1.5 overflow-y-auto', side === 'top' ? 'animate-pop-up' : 'animate-pop-down')}
+          style={{ ...position, background: 'rgb(var(--panel))', backdropFilter: 'none' }}>
           {children(() => setOpen(false))}
-        </div>
+        </div>, document.body
       )}
     </div>
   )

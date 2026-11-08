@@ -10,7 +10,7 @@ export default function InstrumentColor({ part, onApply, onClose }: { part: Part
     <button className="btn-ghost" onClick={onClose}>Cancel</button>
     <button className="btn-primary" onClick={() => onApply(color)}>Apply</button>
   </>}>
-    <p className="text-sm text-muted mb-4">Choose a color for {part.name}{part.group ? ' and its paired staff' : ''}. It appears on the instrument and its notation.</p>
+    <p className="text-sm text-muted mb-4">Choose an accent for {part.name}{part.group ? ' and its paired staff' : ''}: icon, track controls, notation, and keyboard or fretboard.</p>
     <div className="grid grid-cols-5 gap-3 mb-5">{COLORS.map((value) =>
       <button key={value} aria-label={`Color ${value}`} aria-pressed={color === value} title={value}
         className={cx('h-9 rounded-lg border-2 transition-transform hover:scale-105', color === value ? 'border-fg ring-2 ring-accent/40' : 'border-transparent')}

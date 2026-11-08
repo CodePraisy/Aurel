@@ -9,6 +9,7 @@ import { assignTab, tuningOf, positionsFor, type TabPos } from '@/music/tab'
 import { DRUM_PIECES, drumPiece, isFretted, measureTicks, midiName } from '@/music/theory'
 import { cx } from '@/components/ui'
 import { CHORD_SHORTCUT } from './shortcuts'
+import { instrumentAccent } from '@/music/instrumentColor'
 
 /** Notes sounding now (while playing) or the selected chord (while editing). */
 function useActive(part: Part | undefined): { pitches: number[]; eventIds: string[] } {
@@ -57,7 +58,7 @@ export function Fretboard({ part }: { part: Part }) {
   const capo = part.capo ?? 0
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+    <svg aria-label="Guitar fretboard" style={instrumentAccent(part.color)} viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="xMidYMid meet">
       <rect x={28} y={6} width={W - 40} height={H - 12} rx={6} fill="rgb(var(--raised))" />
       {[3, 5, 7, 9, 15, 17, 19, 21].map((f) => <circle key={f} cx={fx(f)} cy={H / 2} r={4} fill="rgb(var(--fg) / 0.12)" />)}
       <circle cx={fx(12)} cy={H / 2 - rowH} r={4} fill="rgb(var(--fg) / 0.12)" /><circle cx={fx(12)} cy={H / 2 + rowH} r={4} fill="rgb(var(--fg) / 0.12)" />
@@ -68,7 +69,7 @@ export function Fretboard({ part }: { part: Part }) {
         return (
           <g key={i}>
             <text x={10} y={y + 4} fontSize={10} fill="rgb(var(--muted))" textAnchor="middle">{midiName(t).replace(/\d+$/, '')}</text>
-            <line x1={30} x2={W - 12} y1={y} y2={y} stroke="rgb(var(--fg) / 0.5)" strokeWidth={0.8 + i * 0.35} />
+            <line data-guitar-string x1={30} x2={W - 12} y1={y} y2={y} stroke={part.color ?? 'rgb(var(--fg) / 0.5)'} strokeWidth={0.8 + i * 0.35} />
             {Array.from({ length: frets + 1 }).map((_, f) => (
               <rect key={f} x={f === 0 ? 2 : fx(f) - (W - 50) / frets / 2} y={y - rowH / 2} width={f === 0 ? 34 : (W - 50) / frets} height={rowH} fill="transparent" className="cursor-pointer hover:fill-[rgb(var(--accent)/0.12)]"
                 onPointerDown={(e) => {
@@ -200,7 +201,7 @@ export default function InstrumentPanel({ project }: { project: Project }) {
   const [tab, setTab] = useState<'fret' | 'keys' | 'drums'>('fret')
   const effective = drums ? 'drums' : fretted && tab !== 'keys' ? 'fret' : 'keys'
   return (
-    <div className="h-full flex flex-col px-4 pt-2 pb-3">
+    <div style={instrumentAccent(part?.color)} className="h-full flex flex-col px-4 pt-2 pb-3">
       <div className="flex items-center gap-2 mb-1.5">
         <div className="seg">
           {fretted && <button className={cx(effective === 'fret' && 'on')} onClick={() => setTab('fret')}>Fretboard</button>}

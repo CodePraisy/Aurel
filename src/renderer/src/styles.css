@@ -308,6 +308,10 @@ button:hover > .studio-art { transform: scale(1.06) rotate(-2deg); }
 .part-card:hover .part-icon { transform: scale(1.08); }
 .part-card .slider::-webkit-slider-runnable-track { background: linear-gradient(to right, hsl(var(--hue) 70% 58% / .9) var(--pct, 50%), rgb(var(--fg) / 0.1) var(--pct, 50%)); }
 .part-card.mix .slider::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(var(--accent)) var(--pct, 50%), rgb(var(--fg) / 0.1) var(--pct, 50%)); }
+.part-card.custom-color.on { background: linear-gradient(100deg, rgb(var(--accent) / .16), rgb(var(--accent) / .04) 70%); box-shadow: inset 0 0 0 1px rgb(var(--accent) / .38), 0 10px 24px -18px rgb(var(--accent) / .9); }
+.part-card.custom-color::before { background: rgb(var(--accent)); box-shadow: 0 0 10px rgb(var(--accent) / .8); }
+.part-card.custom-color .part-icon { color: rgb(var(--accent)); background: rgb(var(--accent) / .13); box-shadow: inset 0 0 0 1px rgb(var(--accent) / .25); }
+.part-card.custom-color .slider::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(var(--accent)) var(--pct, 50%), rgb(var(--fg) / .1) var(--pct, 50%)); }
 .part-all.on { background: linear-gradient(90deg, rgb(var(--accent) / .16), rgb(var(--accent) / .04)); box-shadow: inset 0 0 0 1px rgb(var(--accent) / .25); }
 
 .studio-main { background: radial-gradient(ellipse 70% 50% at 50% 0%, rgb(var(--accent) / .045), transparent 70%); }
