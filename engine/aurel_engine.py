@@ -1056,7 +1056,9 @@ def resolve_bleed(notes_by_stem: dict, sal: dict, families: dict, dup_ratio: flo
     for name, notes in notes_by_stem.items():
         if families.get(name) not in PITCHED or name not in sal:
             continue
-        others = [o for o in sal if o != name]
+        # bass and guitar often double a riff in unison, and the bass stem is always louder down
+        # there: comparing against the bass would delete real guitar notes, so it is left out
+        others = [o for o in sal if o != name and families.get(o) != "bass" and families.get(name) != "bass"]
         if not others:
             continue
         keep = []

@@ -72,11 +72,13 @@ Download `Aurel-0.6.0-Windows-x64-Portable.exe` and run it from any folder or a 
 Better models, models that work together, and a nicer studio.
 
 - **BS-RoFormer separation** on NVIDIA GPUs: the six-instrument RoFormer splits bass and drums about 4–5 dB more cleanly than Demucs on our real test song (bass 14.0 vs 9.8 dB SDR, drums 14.3 vs 9.6). Demucs stays the default on the processor, where RoFormer is about 18× slower. Choose in **Settings → Transcription → Instrument separation**.
-- **The parts check each other:** a note that another instrument's stem also has, and plays much louder, is that instrument leaking through the separation and is removed (__BLEED__ on real Bach chorales).
+- **The parts check each other:** a note that another instrument's stem also has, and plays much louder, is that instrument leaking through the separation and is removed (on real Bach chorales: note F1 0.556 → 0.600 and 0.474 → 0.545). Bass is left out of this check, because bass and guitar often double a riff.
 - **Chord symbols and the key:** chords are found beat by beat from every part and printed over the score, shown live in the transport while you play, and exported to MusicXML. The key signature now comes from the chords (right in 7 of 8 test songs, up from 4). Chord roots were right in every test bar.
 - **Triplets** are written where a beat is clearly played in three (and exported to MusicXML).
 - **Strum arrows** (down or up) over guitar chords, and **bends, vibrato, slides and hammer-ons** found on single-note guitar and bass lines.
-- **__CLEAN__**
+- **Better notes on real music:** gentler guitar clean-up (real guitar songs: note F1 0.486 → 0.625; it had been deleting real fingerpicked notes), Basic Pitch retuned for strings, winds and synths, and a better piano clean-up on the generated test songs (0.72 → 0.81).
+- **Tab fingering** reads the whole line ahead and stays in a hand position: 62 % of notes on the same string and fret as real tabs, up from 5 %.
+- **Chord boxes:** click the chord in the transport to see every chord of the song as a guitar chord diagram.
 - **Lyrics:** Whisper Medium and Large v3 Turbo, Whisper on the GPU when there is one, and no words invented over long instrumental passages.
 - **Train your own note model** on an RTX 3050 (6 GB) or better with `tools/train` (see its README), and use it in **Settings → Transcription → Custom note model**.
 - **Arrow keys work everywhere:** they move between cards, buttons and rows on every page, and in the studio they move the note cursor even right after you touched a slider or a picker, before anything is selected, and across empty bars. Keyboard focus is now visible.

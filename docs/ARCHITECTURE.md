@@ -87,6 +87,19 @@ The three home-screen workflows all open the same Studio. The Studio is a notati
 
 F1 score of notes on exactly the right beat with the right pitch (1.0 = perfect), 8 songs, simulated separation bleed. Engine 1 lost most notes to tempo drift: one rounded tempo for the whole song moves later bars off the beat.
 
+**Engine 3** (v0.6.0), same 8 songs: guitar 0.82 → **0.83**, piano 0.72 → **0.81**, bass, drums and melody unchanged; strum arrows, where shown, point the right way 96 % of the time (shown on about half of the strums); chord roots right in every bar, key signature in 7 of 8 songs (was 4).
+
+**Real music with known scores** (note F1, onset within 50 ms, `tools/engine-bench/real`), Demucs stems:
+
+| Set | v0.5 | v0.6 |
+|---|---|---|
+| Guitar, AlpacaGuitarSet (3 songs, 1 160 notes) | 0.486 | **0.625** |
+| Bass, AlpacaGuitarSet | 1.000 | 1.000 |
+| Bach10 chorales, all parts (10 real recordings) | 0.544 | **≈0.58** (0.556 → 0.600 and 0.474 → 0.545 on the two re-checked with the final bleed rule; 0.597 over all ten with a version that also compared against the bass stem, which cost real guitar notes) |
+| Tab fingering vs real tabs (273 notes) | 5 % | **62 %** |
+
+Separation, BS-RoFormer SW vs htdemucs_6s on a real song (SDR): bass 14.0 vs 9.8 dB, drums 14.3 vs 9.6 dB, guitar 1.7 vs 1.7 dB (three guitars, one of them distorted, which both put partly in "other"). On a 2-core processor RoFormer ran ~18× slower, hence GPU only by default.
+
 Real recordings were used where annotated audio is available: on sung notes (Vocadito) CREPE note onsets scored 0.77 F1 against 0.53 for Basic Pitch. Beat This! found 97–100 % of beats in the test songs even with the drums removed.
 
 ### Research behind engine 3
