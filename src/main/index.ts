@@ -15,7 +15,7 @@ import { checkYouTube, acquireYouTubeJob } from './youtube'
 import { engineStatus, installEngineJob, processJob } from './engine'
 import { packStatus, downloadPacksJob, addCustomSound, removeCustomSound } from './sounds'
 import { installYtDlp } from './tools'
-import { checkForUpdate, installUpdate } from './updater'
+import { checkForUpdate, installUpdate, restartForUpdate } from './updater'
 import { SOUND_PACKS } from '@shared/sounds'
 import {
   clearVstFailures, closeAllTracks, closeTrack, editTrackPlugin, openTrack, pluginParameters, prepareStemStream, renderTrack, scanVst,
@@ -280,6 +280,7 @@ function registerIpc(): void {
   }) }))
 
   h('updates:check', () => checkForUpdate())
+  h('updates:restart', () => restartForUpdate())
   h('updates:install', () => ({ jobId: startJob('update', installUpdate, undefined, { key: 'app-update' }) }))
   ipcMain.on('updates:version', (e) => { e.returnValue = app.getVersion() })
   h('engine:status', (_e, force?: boolean) => engineStatus(!!force))

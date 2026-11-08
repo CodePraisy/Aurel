@@ -25,6 +25,7 @@ interface AppState {
   dialog: null | 'new' | 'youtube' | 'url'
   projectRevision: Record<string, number> // bumps when a project changes outside the editor
   update: UpdateInfo | null // a newer release to offer
+  updateReady: UpdateInfo | null
   go(r: Route): void
   back(fallback?: Route): void
   setDialog(d: AppState['dialog']): void
@@ -59,6 +60,7 @@ export const useApp = create<AppState>((set, get) => ({
   dialog: null,
   projectRevision: {},
   update: null,
+  updateReady: null,
   go: (route) => set((s) => JSON.stringify(s.route) === JSON.stringify(route) ? s :
     { route, history: [...s.history.slice(-39), s.route] }),
   back: (fallback = { name: 'home' }) => set((s) => ({
@@ -210,6 +212,9 @@ api.jobs.onUpdate(async (u) => {
   }
   useApp.setState((s) => ({ jobs: { ...s.jobs, [u.jobId]: info } }))
   if (!u.done) return
+  if (u.kind === 'update' && !u.error && u.result) {
+    useApp.setState({ update: null, updateReady: u.result as UpdateInfo })
+  }
   setTimeout(() => useApp.setState((s) => { const j = { ...s.jobs }; delete j[u.jobId]; return { jobs: j } }), 30000)
   if (u.kind === 'sounds' || u.kind === 'tools') player.refreshSounds()
   if (u.error) {

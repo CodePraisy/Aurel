@@ -101,8 +101,9 @@ export interface AurelApi {
   setup: { run(): Promise<{ jobId: string }> }
   updates: {
     check(): Promise<UpdateInfo>
-    /** Download and install the latest release, then restart Aurel. */
+    /** Download the release in the background; installation waits for restart(). */
     install(): Promise<{ jobId: string }>
+    restart(): Promise<void>
     version(): string
   }
   shell: { openExternal(url: string): Promise<void> }

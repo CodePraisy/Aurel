@@ -106,6 +106,7 @@ const api: AurelApi = {
   updates: {
     check: () => i('updates:check'),
     install: () => i('updates:install'),
+    restart: () => i('updates:restart'),
     version: () => ipcRenderer.sendSync('updates:version')
   },
   shell: { openExternal: (url) => i('shell:openExternal', url) }

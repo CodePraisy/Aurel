@@ -2,7 +2,7 @@ import { BrowserWindow } from 'electron'
 import { spawn, type ChildProcess, type SpawnOptions } from 'child_process'
 import type { JobUpdate } from '@shared/types'
 
-interface Job { key?: string; update: JobUpdate; procs: Set<ChildProcess>; cancelled: boolean }
+interface Job { key?: string; update: JobUpdate; procs: Set<ChildProcess>; cancelled: boolean; controller: AbortController }
 const jobs = new Map<string, Job>()
 
 export class Cancelled extends Error { constructor() { super('Cancelled') } }
@@ -12,6 +12,7 @@ export function broadcast(u: JobUpdate): void {
 }
 
 export interface JobCtx {
+  signal: AbortSignal
   id: string
   progress(stage: string, pct: number, message?: string): void
   log(line: string): void
@@ -24,10 +25,11 @@ export function startJob(kind: JobUpdate['kind'], fn: (ctx: JobCtx) => Promise<u
   const existing = options.key && [...jobs.values()].find((job) => job.key === options.key && !job.update.done)
   if (existing) return existing.update.jobId
   const id = `j${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-  const job: Job = { key: options.key, update: { jobId: id, kind, projectId: options.projectId, stage: 'Starting', pct: -1 }, procs: new Set(), cancelled: false }
+  const job: Job = { key: options.key, update: { jobId: id, kind, projectId: options.projectId, stage: 'Starting', pct: -1 }, procs: new Set(), cancelled: false, controller: new AbortController() }
   jobs.set(id, job)
   const send = (patch: Partial<JobUpdate>) => { job.update = { ...job.update, ...patch, log: patch.log }; onUpdate(job.update) }
   const ctx: JobCtx = {
+    signal: job.controller.signal,
     id,
     progress: (stage, pct, message) => { ctx.check(); send({ stage, pct, message }) },
     log: (line) => send({ log: line }),
@@ -66,8 +68,9 @@ export function startJob(kind: JobUpdate['kind'], fn: (ctx: JobCtx) => Promise<u
       const result = await fn(ctx)
       send({ stage: 'Done', pct: 1, done: true, result })
     } catch (e) {
-      const msg = e instanceof Cancelled ? 'Cancelled' : (e as Error).message
-      send({ stage: e instanceof Cancelled ? 'Cancelled' : 'Failed', pct: 0, done: true, error: msg })
+      const cancelled = job.cancelled || e instanceof Cancelled
+      const msg = cancelled ? 'Cancelled' : (e as Error).message
+      send({ stage: cancelled ? 'Cancelled' : 'Failed', pct: 0, done: true, error: msg })
     } finally {
       setTimeout(() => jobs.delete(id), 60_000)
     }
@@ -77,8 +80,9 @@ export function startJob(kind: JobUpdate['kind'], fn: (ctx: JobCtx) => Promise<u
 
 export function cancelJob(id: string): void {
   const job = jobs.get(id)
-  if (!job) return
+  if (!job || job.update.done) return
   job.cancelled = true
+  job.controller.abort()
   for (const p of job.procs) killTree(p)
 }
 

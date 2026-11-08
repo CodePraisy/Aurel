@@ -2,6 +2,8 @@ import { app, net, shell } from 'electron'
 import fs from 'fs'
 import { dirname, join } from 'path'
 import { spawn } from 'child_process'
+import { Readable } from 'stream'
+import { pipeline, finished } from 'stream/promises'
 import type { UpdateInfo } from '@shared/types'
 import { newer } from '@shared/version'
 import type { JobCtx } from './jobs'
@@ -11,6 +13,8 @@ import { paths } from './store'
 const REPO = 'CodePraisy/Aurel'
 
 let latest: UpdateInfo | null = null
+let prepared: { info: UpdateInfo; dir: string; file: string } | null = null
+let restarting = false
 
 
 /** Which download replaces this copy of Aurel. */
@@ -44,45 +48,62 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
 }
 
 async function download(ctx: JobCtx, url: string, file: string, size: number): Promise<void> {
-  const res = await net.fetch(url)
+  ctx.check()
+  const res = await net.fetch(url, { signal: ctx.signal })
   if (!res.ok || !res.body) throw new Error(`Download failed (${res.status}).`)
   const total = Number(res.headers.get('content-length')) || size
   fs.mkdirSync(dirname(file), { recursive: true })
-  const out = fs.createWriteStream(`${file}.part`)
-  const reader = res.body.getReader()
+  const out = fs.createWriteStream(`${file}.part`, { fd: fs.openSync(`${file}.part`, 'w') })
+  const closed = finished(out).catch(() => undefined)
   let got = 0
   try {
-    for (;;) {
-      ctx.check()
-      const { done, value } = await reader.read()
-      if (done) break
-      got += value.length
-      if (!out.write(value)) await new Promise<void>((r) => out.once('drain', () => r()))
-      ctx.progress('Downloading update', total ? got / total : -1, `${(got / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB`)
-    }
+    await pipeline(Readable.fromWeb(res.body as import('stream/web').ReadableStream), async function* (source) {
+      for await (const value of source) {
+        ctx.check()
+        got += value.length
+        ctx.progress('Downloading update', total ? got / total : -1, `${(got / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB`)
+        yield value
+      }
+    }, out, { signal: ctx.signal })
+    ctx.check()
+    if (total && got < total) throw new Error('The download was interrupted. Try again.')
+    fs.renameSync(`${file}.part`, file)
   } finally {
-    await new Promise<void>((r) => out.end(() => r()))
+    out.destroy()
+    await closed
+    fs.rmSync(`${file}.part`, { force: true })
   }
-  if (total && got < total) throw new Error('The download was interrupted. Try again.')
-  fs.renameSync(`${file}.part`, file)
 }
 
-function detached(cmd: string, args: string[]): void {
-  spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+function detached(cmd: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true })
+    child.once('error', reject)
+    child.once('spawn', () => { child.unref(); resolve() })
+  })
 }
 
-/**
- * Download the new version, hand over to a small installer step that runs after Aurel quits,
- * then quit. Aurel starts again on the new version when it is done.
- */
-export async function installUpdate(ctx: JobCtx): Promise<void> {
+/** Download and stage the release. Keep the running app untouched until restart is requested. */
+export async function installUpdate(ctx: JobCtx): Promise<UpdateInfo> {
+  if (prepared && fs.existsSync(prepared.file)) return prepared.info
   const info = latest ?? await checkForUpdate()
   if (!info.available || !info.asset || !info.canInstall) throw new Error('There is no update to install.')
   const dir = join(paths.data, 'updates')
   fs.rmSync(dir, { recursive: true, force: true })
   const file = join(dir, info.asset.name)
   await download(ctx, info.asset.url, file, info.asset.size)
-  ctx.progress('Installing update', -1, 'Aurel will restart')
+  ctx.progress('Update ready', 1, 'Keep working, or restart when you’re ready')
+  prepared = { info, dir, file }
+  return info
+}
+
+/** Only the explicit Restart now action hands off to the installer and quits. */
+export async function restartForUpdate(): Promise<void> {
+  if (restarting) return
+  if (!prepared || !fs.existsSync(prepared.file)) throw new Error('Download the update before restarting.')
+  restarting = true
+  const { info, dir, file } = prepared
+  try {
   if (process.platform === 'win32') {
     const portable = process.env.PORTABLE_EXECUTABLE_FILE
     if (portable) {
@@ -97,11 +118,11 @@ export async function installUpdate(ctx: JobCtx): Promise<void> {
         `del "${file}"`,
         `(goto) 2>nul & del "%~f0"`
       ].join('\r\n'))
-      detached('cmd.exe', ['/c', script])
+      await detached('cmd.exe', ['/c', script])
     } else {
       // NSIS: silent install over the current one (same install scope), then relaunch
       const perMachine = /program files/i.test(app.getPath('exe'))
-      detached(file, ['/S', '--updated', '--force-run', perMachine ? '/allusers' : '/currentuser'])
+      await detached(file, ['/S', '--updated', '--force-run', perMachine ? '/allusers' : '/currentuser'])
     }
   } else if (process.platform === 'darwin') {
     const bundle = join(app.getPath('exe'), '..', '..', '..') // …/Aurel.app
@@ -122,7 +143,8 @@ export async function installUpdate(ctx: JobCtx): Promise<void> {
       await shell.openExternal(info.page!)
       throw new Error('Aurel cannot replace itself in this folder. The download page is open in your browser.')
     }
-    detached('/bin/sh', [script])
+    await detached('/bin/sh', [script])
   }
   setTimeout(() => app.quit(), 600)
+  } catch (error) { restarting = false; throw error }
 }
