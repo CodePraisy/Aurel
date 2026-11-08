@@ -631,6 +631,146 @@ def poly_transkun(audio, device: str):
     return [{"s": float(n.start), "e": float(n.end), "p": int(n.pitch), "v": int(n.velocity)} for n in notes if 0 < n.pitch < 128]
 
 
+MODEL_RELEASE = "https://github.com/CodePraisy/Aurel/releases/download/models"
+HF_GAPS = "https://huggingface.co/xavriley/midi-transcription-models/resolve/main"
+GAPS_FILES = {"guitar": "guitar-gaps.pth", "guitar_fl": "guitar-fl.pth", "bass": "filobass_20000_iterations.pth"}
+_gaps: dict = {}
+
+
+def gaps_checkpoint(models_dir: str, which: str = "guitar") -> str:
+    """The GAPS guitar model (Riley et al., ISMIR 2024; MIT): from Aurel's model release, else Hugging Face."""
+    name = GAPS_FILES[which]
+    path = os.path.join(models_dir, "gaps", name)
+    if not os.path.exists(path):
+        last = None
+        for base in (MODEL_RELEASE, HF_GAPS):
+            try:
+                download(f"{base}/{name}", path, "Downloading the GAPS guitar model")
+                break
+            except Exception as e:  # noqa: BLE001
+                last = e
+        else:
+            raise RuntimeError(f"Could not download {name}: {last}")
+    return path
+
+
+def poly_gaps(audio, device: str, checkpoint: str):
+    """High-resolution CRNN (Kong et al.) trained on classical guitar (GAPS): onset, offset, frame
+    and velocity regression at 100 frames a second, decoded with its own post-processor."""
+    import contextlib
+    import sys
+
+    import numpy as np
+    import librosa
+    import torch
+    from piano_transcription_inference import PianoTranscription
+
+    key = (checkpoint, device)
+    if key not in _gaps:
+        with contextlib.redirect_stdout(sys.stderr):  # the library prints; stdout is our protocol
+            _gaps[key] = PianoTranscription("Regress_onset_offset_frame_velocity_CRNN", checkpoint_path=checkpoint, device=torch.device(device),
+                                            segment_samples=10 * 16000, batch_size=4 if device == "cuda" else 1,
+                                            onset_threshold=0.3, offset_threshold=0.3, frame_threshold=0.1)
+    mono = audio.mean(0) if audio.ndim == 2 else audio
+    x = librosa.resample(np.ascontiguousarray(mono, dtype=np.float32), orig_sr=SR, target_sr=16000)
+    with contextlib.redirect_stdout(sys.stderr), torch.no_grad():
+        out = _gaps[key].transcribe(x, None)
+    return [{"s": float(n["onset_time"]), "e": float(n["offset_time"]), "p": int(n["midi_note"]), "v": int(n["velocity"])}
+            for n in out["est_note_events"] if 0 < int(n["midi_note"]) < 128]
+
+
+# YourMT3+ (Chang et al., MLSP 2024): an optional multi-instrument model. Its code is GPL-3.0, so
+# it is not part of Aurel: it is downloaded on request (a pinned snapshot) and run in its own process.
+YMT3_CODE = "https://codeload.github.com/bgenchel/YourMT3/zip/1ed2be1f7724429eeab6abdbcf6827ff5a0ed80e"
+YMT3_CKPT = "yourmt3-moe-nops.ckpt"
+YMT3_DEPS = ["lightning>=2.2.1,<2.5", "transformers==4.45.1", "einops", "deprecated"]
+
+
+def ymt3_paths(models_dir: str):
+    d = os.path.join(models_dir, "yourmt3")
+    return os.path.join(d, "code"), os.path.join(d, YMT3_CKPT)
+
+
+def cmd_prepare_ymt3(models_dir: str) -> None:
+    """Download YourMT3+'s code, its Python packages and its weights (~560 MB)."""
+    import io
+    import subprocess
+    import sys
+    import urllib.request
+    import zipfile
+
+    code, ckpt = ymt3_paths(models_dir)
+    if not os.path.exists(os.path.join(code, "model_helper.py")):
+        progress("Downloading YourMT3+", -1, "code")
+        with urllib.request.urlopen(YMT3_CODE, timeout=120) as r:
+            z = zipfile.ZipFile(io.BytesIO(r.read()))
+        root = z.namelist()[0].split("/")[0]
+        os.makedirs(code, exist_ok=True)
+        for m in z.namelist():
+            rel = m[len(root) + 1:]
+            if not rel or m.endswith("/"):
+                continue
+            dest = os.path.join(code, rel)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with z.open(m) as src, open(dest, "wb") as out:
+                out.write(src.read())
+    progress("Installing YourMT3+", -1, "Python packages")
+    subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", *YMT3_DEPS], check=True)
+    if not os.path.exists(ckpt):
+        download(f"{MODEL_RELEASE}/{YMT3_CKPT}", ckpt, "Downloading YourMT3+ (560 MB)")
+    emit("done", path=ckpt)
+
+
+def run_ymt3(audio_path: str, models_dir: str, device: str, out_json: str):
+    """All notes YourMT3+ hears in a recording, each with its General MIDI program."""
+    import json
+    import subprocess
+    import sys
+
+    code, ckpt = ymt3_paths(models_dir)
+    if not os.path.exists(ckpt):
+        cmd_prepare_ymt3(models_dir)
+    runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ymt3_runner.py")
+    subprocess.run([sys.executable, runner, "--code", code, "--ckpt", ckpt, "--audio", audio_path, "--out", out_json, "--device", device],
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    with open(out_json, encoding="utf-8") as f:
+        return json.load(f)["notes"]
+
+
+def fuse_notes(a, b, tol: float = 0.05, keep_single: str = "loud", loud: int = 70):
+    """Combine two models' notes for the same audio (a kind of ROVER vote for notes).
+
+    Notes both models found (same pitch, starts within `tol`) are kept once, with the earlier
+    start and the louder velocity: two different models agreeing is strong evidence. A note only
+    one model found is kept if it is loud (`keep_single="loud"`), always ("union") or never
+    ("agree")."""
+    import bisect
+
+    b_sorted = sorted(b, key=lambda n: n["s"])
+    starts = [n["s"] for n in b_sorted]
+    used = set()
+    out = []
+    for n in a:
+        i = bisect.bisect_left(starts, n["s"] - tol)
+        match = None
+        while i < len(b_sorted) and starts[i] <= n["s"] + tol:
+            if i not in used and b_sorted[i]["p"] == n["p"]:
+                match = i
+                break
+            i += 1
+        if match is not None:
+            used.add(match)
+            m = b_sorted[match]
+            out.append({**n, "s": min(n["s"], m["s"]), "e": max(n["e"], m["e"]), "v": max(n.get("v", 80), m.get("v", 80)), "agree": 2})
+        elif keep_single == "union" or (keep_single == "loud" and n.get("v", 80) >= loud):
+            out.append({**n, "agree": 1})
+    for i, m in enumerate(b_sorted):
+        if i not in used and (keep_single == "union" or (keep_single == "loud" and m.get("v", 80) >= loud)):
+            out.append({**m, "agree": 1})
+    out.sort(key=lambda n: (n["s"], n["p"]))
+    return out
+
+
 def clean_poly(notes, family: str, sens: float, max_poly: int, rules=("range", "blips", "ghosts", "strums"), ghost_margin=None, blip_vel=70, blip_len=None):
     """Take out what a listener would not call a note: overtones, bleed and blips.
 
