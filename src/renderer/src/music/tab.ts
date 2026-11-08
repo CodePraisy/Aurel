@@ -72,18 +72,94 @@ export function assignChord(p: Part, e: NoteEvent, hand: number): (TabPos | null
   return best ?? fixed
 }
 
-/** Compute tab positions for the whole part, keyed by event id. */
+/** Every playable way to finger an event (distinct strings), cheapest first, at most `limit`. */
+function fingerings(p: Part, e: NoteEvent, limit = 24): (TabPos | null)[][] {
+  const fixed: (TabPos | null)[] = e.notes.map((n) =>
+    n.string && n.fret !== undefined && pitchAt(p, n.string, n.fret) === n.pitch ? { string: n.string, fret: n.fret } : null
+  )
+  const free = e.notes.map((_, i) => i).filter((i) => !fixed[i])
+  if (!free.length) return [fixed]
+  const used = new Set(fixed.filter(Boolean).map((x) => x!.string))
+  const options = free.map((i) => positionsFor(p, e.notes[i].pitch).filter((x) => !used.has(x.string)))
+  const out: { pos: (TabPos | null)[]; cost: number }[] = []
+  const cur = [...fixed]
+  let visited = 0
+  const rec = (k: number, taken: Set<number>) => {
+    if (visited++ > 4000) return
+    if (k === free.length) {
+      const all = cur.filter(Boolean) as TabPos[]
+      const fretted = all.filter((x) => x.fret > 0).map((x) => x.fret)
+      const span = fretted.length ? Math.max(...fretted) - Math.min(...fretted) : 0
+      out.push({ pos: [...cur], cost: (span > 4 ? 40 * (span - 4) : span) + cur.filter((x) => !x).length * 100 })
+      return
+    }
+    let any = false
+    for (const o of options[k]) {
+      if (taken.has(o.string)) continue
+      any = true
+      cur[free[k]] = o
+      taken.add(o.string)
+      rec(k + 1, taken)
+      taken.delete(o.string)
+      cur[free[k]] = null
+    }
+    if (!any) rec(k + 1, taken)
+  }
+  rec(0, new Set(used))
+  out.sort((a, b) => a.cost - b.cost)
+  return out.slice(0, limit).map((x) => x.pos)
+}
+
+/** Where the fretting hand sits for a fingering (open strings don't move it). */
+function handOf(pos: (TabPos | null)[]): number | null {
+  const fr = pos.filter((x): x is TabPos => !!x && x.fret > 0).map((x) => x.fret)
+  return fr.length ? fr.reduce((a, b) => a + b, 0) / fr.length : null
+}
+
+/**
+ * Compute tab positions for the whole part, keyed by event id.
+ *
+ * The whole line is fingered at once (a Viterbi search over each event's possible fingerings),
+ * the way a player reads ahead: stay in one hand position as long as the notes fit, shift when a
+ * phrase moves up the neck, and use open strings for chords in open position but not in the
+ * middle of a melody played higher up.
+ */
 export function assignTab(p: Part): Map<string, (TabPos | null)[]> {
   const res = new Map<string, (TabPos | null)[]>()
-  let hand = 2
-  for (const m of p.measures) {
-    for (const e of m.events) {
-      if (e.rest || !e.notes.length) continue
-      const pos = assignChord(p, e, hand)
-      res.set(e.id, pos)
-      const fr = pos.filter((x): x is TabPos => !!x && x.fret > 0).map((x) => x.fret)
-      if (fr.length) hand = hand * 0.4 + (fr.reduce((a, b) => a + b, 0) / fr.length) * 0.6
-    }
+  const events = p.measures.flatMap((m) => m.events.filter((e) => !e.rest && e.notes.length))
+  if (!events.length) return res
+  type State = { pos: (TabPos | null)[]; hand: number; cost: number; back: number }
+  let layer: State[] = []
+  const trail: State[][] = []
+  events.forEach((e, i) => {
+    const single = e.notes.length === 1
+    const opts = fingerings(p, e)
+    const next: State[] = opts.map((pos) => {
+      const own = handOf(pos)
+      const base = pos.reduce((c, x) => c + (x ? (x.fret === 0 ? (single ? 0.9 : 0) : 0.04 * x.fret) : 100), 0)
+        + (() => { const fr = pos.filter((x): x is TabPos => !!x && x.fret > 0).map((x) => x.fret); const span = fr.length ? Math.max(...fr) - Math.min(...fr) : 0; return span > 4 ? 40 * (span - 4) : span * 0.4 })()
+      if (!layer.length) return { pos, hand: own ?? 2, cost: base + (own ?? 2) * 0.05, back: -1 }
+      let best: State | null = null
+      layer.forEach((prev, j) => {
+        const hand = own ?? prev.hand
+        const move = Math.abs(hand - prev.hand)
+        // a note outside the hand's reach (one fret back, three ahead) means a position shift
+        const outside = pos.some((x) => !!x && x.fret > 0 && (x.fret < prev.hand - 1.5 || x.fret > prev.hand + 3.5))
+        const opensHigh = single && pos.some((x) => !!x && x.fret === 0) && prev.hand > 4 ? 1.2 : 0
+        const c = prev.cost + base + move * 0.35 + (outside ? 1.6 : 0) + opensHigh
+        if (!best || c < best.cost) best = { pos, hand: own !== null ? prev.hand * 0.35 + own * 0.65 : prev.hand, cost: c, back: j }
+      })
+      return best!
+    })
+    trail.push(next)
+    layer = next
+    void i
+  })
+  let k = layer.reduce((b, s, j) => (s.cost < layer[b].cost ? j : b), 0)
+  for (let i = events.length - 1; i >= 0; i--) {
+    const st = trail[i][k]
+    res.set(events[i].id, st.pos)
+    k = st.back
   }
   return res
 }

@@ -30,6 +30,7 @@ const api: AurelApi = {
   media: {
     pickAudio: () => i('media:pickAudio'),
     pickMidi: () => i('media:pickMidi'),
+    pickModel: () => i('media:pickModel'),
     importAudio: (path, opts) => i('media:importAudio', path, opts),
     importUrl: (url) => i('media:importUrl', url),
     analyzeRhythm: (id) => i('media:analyzeRhythm', id),

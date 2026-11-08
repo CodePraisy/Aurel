@@ -181,16 +181,16 @@ export default function Studio({ projectId }: { projectId: string }) {
   return (
     <div className="h-full flex flex-col">
       {/* top bar */}
-      <header className="h-12 shrink-0 flex items-center gap-2 pl-3 pr-[150px] border-b border-line drag">
+      <header className="studio-header h-12 shrink-0 flex items-center gap-2 pl-3 pr-[150px] border-b border-line drag">
         <button className="no-drag shrink-0" aria-label="Change cover photo" title="Change cover photo"
           onClick={() => void changeCover(p.id)}
           onContextMenu={(event) => openContextMenu(event, [{ label: 'Change cover photo…', onClick: () => void changeCover(p.id) }])}>
-          <Artwork id={p.id} artwork={entry?.artwork ?? null} title={s.title} size={30} />
+          <Artwork id={p.id} artwork={entry?.artwork ?? null} title={s.title} size={30} className="studio-art" />
         </button>
         <Popover width={330} trigger={(t) => (
           <button className="no-drag text-left min-w-0 max-w-[340px] px-1.5 py-0.5 rounded-md hover:bg-fg/[0.05]" onClick={t}>
-            <div className="text-[13.5px] font-medium truncate leading-tight">{s.title}</div>
-            <div className="text-[11.5px] text-muted truncate leading-tight">{s.composer || (p.kind === 'composition' ? 'Original composition' : 'Unknown artist')} · <span onContextMenu={editOnRightClick('tempo')}>{s.tempo} BPM</span> · {KEY_NAMES[s.keyFifths + 7]} · <span onContextMenu={editOnRightClick('meter')}>{s.timeSig.num}/{s.timeSig.den}</span></div>
+            <div className="font-display text-[15.5px] truncate leading-tight">{s.title}</div>
+            <div className="text-[11.5px] text-muted truncate leading-tight flex items-center gap-1.5">{s.composer || (p.kind === 'composition' ? 'Original composition' : 'Unknown artist')} <span className="meta-dot" /> <span className="tabular-nums" onContextMenu={editOnRightClick('tempo')}>{s.tempo} BPM</span> <span className="meta-dot" /> {KEY_NAMES[s.keyFifths + 7]} <span className="meta-dot" /> <span onContextMenu={editOnRightClick('meter')}>{s.timeSig.num}/{s.timeSig.den}</span></div>
           </button>
         )}>
           {(closeDetails) => (
@@ -271,11 +271,11 @@ export default function Studio({ projectId }: { projectId: string }) {
       {player.fxError && <div role="alert" className="shrink-0 px-5 py-2 border-b border-line text-[12.5px] text-bad">Playback could not start: {player.fxError}</div>}
 
       <div className="flex-1 min-h-0 flex">
-        <aside className="shrink-0 min-h-0 overflow-hidden border-r border-line bg-panel/40" style={{ width: sideW }}>
+        <aside className="parts-aside shrink-0 min-h-0 overflow-hidden border-r border-line" style={{ width: sideW }}>
           <PartsPanel project={p} />
         </aside>
         <div className="w-1 -ml-0.5 cursor-col-resize hover:bg-accent/40 z-10" onMouseDown={dragSide} />
-        <section className="flex-1 min-w-0 flex flex-col">
+        <section className="studio-main flex-1 min-w-0 flex flex-col">
           {hasParts && !lyricsMode && hasNotation ? (
             <>
               <Toolbar project={p} onEditArpeggio={editArpeggio} onTranspose={() => setTransposeTarget('score')} />
@@ -291,7 +291,7 @@ export default function Studio({ projectId }: { projectId: string }) {
             <EmptyStudio project={p} running={!!job || !!installJob} stage={job?.stage ?? (installJob ? 'Installing' : undefined)} pct={(job ?? installJob)?.pct} onTranscribe={startTranscription} onEditRhythm={setRhythmField} />
           ) : null}
           {hasParts && lyricsMode && <VocalWords project={p} />}
-          {hasParts && p.audio && <div className="shrink-0 border-t border-line px-4 py-1 bg-panel/30"><Waveform project={p} height={34} /></div>}
+          {hasParts && p.audio && <div className="wave-strip shrink-0 border-t border-line px-4 py-1"><Waveform project={p} height={34} /></div>}
         </section>
       </div>
       <Transport project={p} onEditRhythm={setRhythmField} onTranspose={() => setTransposeTarget('playback')} />
@@ -477,7 +477,7 @@ const STEPS: { label: string; detail: string; match: RegExp }[] = [
   { label: 'Beat', detail: 'Find every beat and bar line', match: /beat|isolating/i },
   { label: 'Notes', detail: 'A model for each instrument writes its notes', match: /transcribing(?!.*words)|melody|drums/i },
   { label: 'Words', detail: 'Recognise what the singer sings', match: /words/i },
-  { label: 'Score', detail: 'Place everything on the beat and engrave it', match: /placing|writing|result/i }
+  { label: 'Score', detail: 'Check the parts against each other, find chords, place it all on the beat', match: /comparing|placing|writing|result/i }
 ]
 
 /** What the engine is doing right now, as a row of steps. */

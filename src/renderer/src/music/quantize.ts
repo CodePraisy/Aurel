@@ -2,15 +2,16 @@ import type { EngineAnalysis, InstrumentKind, Measure, NoteEvent, Part, Score } 
 import { PPQ } from '@shared/types'
 import { DRUM_PIECES, KEY_NAMES, MINOR_KEY_NAMES, measureTicks } from './theory'
 import { defaultPart, emptyMeasure, normalizeMeasure, pianoParts, uid } from './score'
-import { DEFAULT_RHYTHM, beatFrame, quantizeOnGrid, tempoPlan, type LineMode, type RhythmOptions } from './beatgrid'
+import { DEFAULT_RHYTHM, beatFrame, quantizeOnGrid, tempoPlan, type GridOnset, type LineMode, type RhythmOptions } from './beatgrid'
 
 export interface TranscribeOptions {
   rhythm: RhythmOptions
   followTempo: boolean
   vocalMelody: boolean
   guitarChordLimit: number
+  chords?: boolean
 }
-export const DEFAULT_TRANSCRIBE: TranscribeOptions = { rhythm: DEFAULT_RHYTHM, followTempo: true, vocalMelody: false, guitarChordLimit: 6 }
+export const DEFAULT_TRANSCRIBE: TranscribeOptions = { rhythm: DEFAULT_RHYTHM, followTempo: true, vocalMelody: false, guitarChordLimit: 6, chords: true }
 
 export interface RawNote { s: number; e: number; p: number; v: number }
 
@@ -24,7 +25,7 @@ export interface QuantizeOpts {
   mode?: 'poly' | 'melody' | 'bass'
 }
 
-interface Onset { tick: number; end: number; pitches: Map<number, number> }
+type Onset = GridOnset
 
 /** Quantize free-timed notes onto the grid and group simultaneous onsets into chords. */
 export function quantizeNotes(notes: RawNote[], o: QuantizeOpts): Onset[] {
@@ -54,6 +55,14 @@ export function quantizeNotes(notes: RawNote[], o: QuantizeOpts): Onset[] {
   return onsets
 }
 
+/** Strum direction and playing techniques the engine heard, carried onto the written note. */
+function onsetExtras(on: GridOnset): Partial<NoteEvent> {
+  const x: Partial<NoteEvent> = {}
+  if (on.strum) x.strum = on.strum
+  if (on.tech?.length) { x.tech = on.tech; if (on.bend) x.bend = on.bend }
+  return x
+}
+
 /** Turn grid onsets into measures, splitting across barlines with ties. */
 export function onsetsToMeasures(onsets: Onset[], ts: { num: number; den: number }, minMeasures = 1, drums = false): Measure[] {
   const mt = measureTicks(ts)
@@ -72,7 +81,7 @@ export function onsetsToMeasures(onsets: Onset[], ts: { num: number; den: number
       if (mi >= count) break
       const barEnd = (mi + 1) * mt
       const segEnd = Math.min(end, barEnd)
-      raw[mi].push({ id: uid(), start: t - mi * mt, dur: segEnd - t, notes, velocity: Math.max(1, Math.min(127, vel)), tie: segEnd < end && !drums })
+      raw[mi].push({ id: uid(), start: t - mi * mt, dur: segEnd - t, notes, velocity: Math.max(1, Math.min(127, vel)), tie: segEnd < end && !drums, ...(t === on.tick ? onsetExtras(on as GridOnset) : {}) })
       t = segEnd
       if (drums) break
     }
@@ -212,16 +221,18 @@ function beatGridScore(a: EngineAnalysis, title: string, composer: string, piano
   const { beatTicks } = beatFrame(g, opts.rhythm.detail)
   const { tempo, changes } = tempoPlan(g, beatTicks, opts.followTempo)
   const bars = Math.max(1, Math.floor((g.times.length - 1) / g.meter))
-  const beatsOf = (n: { s: number; e: number; p: number; v: number; b?: number; be?: number }) => ({ b: n.b ?? 0, be: n.be ?? n.b ?? 0, p: n.p, v: n.v })
+  const beatsOf = (n: EngineAnalysis['notes'][string][number]) => ({ b: n.b ?? 0, be: n.be ?? n.b ?? 0, p: n.p, v: n.v, strum: n.strum, tech: n.tech, bend: n.bend })
   const lines = (notes: Parameters<typeof beatsOf>[0][], mode: LineMode, maxPoly = 8) =>
     onsetsToMeasures(quantizeOnGrid(notes.filter((n) => n.b !== undefined).map(beatsOf), g, opts.rhythm, mode, maxPoly), ts, bars, mode === 'drums')
   const pitched = a.stems.filter((s) => s.kind !== 'drums' && s.name !== 'vocals')
-  const key = detectKey(pitched.flatMap((s) => (a.notes[s.name] ?? []).map((n) => ({ p: n.p, dur: n.e - n.s }))))
+  const detected = detectKey(pitched.flatMap((s) => (a.notes[s.name] ?? []).map((n) => ({ p: n.p, dur: n.e - n.s }))))
+  // engine 3 finds the key from every part together; its answer wins when it has one
+  const key = a.key ? { fifths: Math.max(-7, Math.min(7, a.key.fifths)), name: a.key.name.replace(' major', '').replace(' minor', 'm') } : detected
   const parts: Part[] = []
   for (const stem of a.stems) {
     const singer = stem.name === 'vocals'
     const kind = singer ? 'singer' : stem.kind
-    const cls = { label: kind, confidence: stem.confidence, traits: { ...stem.traits, ...(a.methods?.[stem.name] ? { model: a.methods[stem.name] } : {}) } }
+    const cls = { label: kind, confidence: stem.confidence, traits: { ...stem.traits, ...(a.methods?.[stem.name] ? { model: a.methods[stem.name] } : {}), ...(a.bleed?.[stem.name] ? { 'bleed removed': `${a.bleed[stem.name]} notes` } : {}) } }
     if (stem.kind === 'drums') {
       const piece = (id: string) => DRUM_PIECES.find((p) => p.id === id)?.midi ?? 38
       const p = defaultPart('drums', 0, mt, 'Drums')
@@ -261,5 +272,12 @@ function beatGridScore(a: EngineAnalysis, title: string, composer: string, piano
   parts.sort((x, y) => Number(x.kind === 'singer') - Number(y.kind === 'singer'))
   const score: Score = { title, composer, tempo, timeSig: ts, keyFifths: key.fifths, parts }
   if (changes.length) score.tempoChanges = changes
+  if (opts.chords !== false && a.chords?.length) {
+    const total = count * mt
+    score.chords = a.chords
+      .map((c) => ({ tick: Math.round(c.b * beatTicks), name: c.name }))
+      .filter((c) => c.tick >= 0 && c.tick < total)
+      .map((c) => ({ measure: Math.floor(c.tick / mt), tick: c.tick % mt, name: c.name }))
+  }
   return { score, offset: +g.times[0].toFixed(4), key: key.name }
 }

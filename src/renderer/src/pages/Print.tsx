@@ -17,7 +17,10 @@ export default function PrintView() {
       const p: Project = await api.project.load(params.projectId)
       const selected = p.score.parts.filter((x) => !params.partIds || params.partIds.includes(x.id))
       const parts = selected.filter((part) => part.kind !== "singer" || part.measures.some((m) => m.events.some((e) => !e.rest)))
-      const score = { ...p.score, parts: parts.map((x) => ({ ...x, measures: x.measures.slice(params.from ?? 0, (params.to ?? x.measures.length - 1) + 1) })) }
+      const from = params.from ?? 0
+      const to = params.to ?? Infinity
+      const score = { ...p.score, chords: p.score.chords?.filter((c) => c.measure >= from && c.measure <= to).map((c) => ({ ...c, measure: c.measure - from })),
+        parts: parts.map((x) => ({ ...x, measures: x.measures.slice(params.from ?? 0, (params.to ?? x.measures.length - 1) + 1) })) }
       await document.fonts.ready
       const el = ref.current!
       renderScore(el, score, { parts: score.parts, mode: params.mode as 'staff' | 'tab' | 'both', width: 760, zoom: Math.max(0.5, Math.min(1.4, params.scale ?? 1)), spacing: Math.max(0.7, Math.min(1.5, params.spacing ?? 1)), header: true, split: true, colors: { ink: '#111', paper: '#fff', staff: '#555', faint: '#666', accent: '#000' } })

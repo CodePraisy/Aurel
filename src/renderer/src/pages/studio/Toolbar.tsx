@@ -39,7 +39,7 @@ export default function Toolbar({ project, onEditArpeggio, onTranspose }: { proj
   const sep = <div className="w-px h-5 bg-line mx-1.5" />
 
   return (
-    <div className="h-11 shrink-0 flex items-center px-3 gap-0.5 border-b border-line bg-panel/50 overflow-x-auto">
+    <div className="studio-toolbar h-11 shrink-0 flex items-center px-3 gap-0.5 border-b border-line overflow-x-auto">
       <Btn title="Undo (Ctrl+Z)" onClick={st.undo} disabled={!st.past.length}><Undo2 size={16} /></Btn>
       <Btn title="Redo (Ctrl+Y)" onClick={st.redo} disabled={!st.future.length}><Redo2 size={16} /></Btn>
       {sep}

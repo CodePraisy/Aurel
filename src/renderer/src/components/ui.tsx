@@ -33,11 +33,11 @@ export function Slider({ value, min, max, step = 0.01, onChange, className, titl
   return <input type="range" className={cx('slider', className)} title={title} aria-label={title} min={min} max={max} step={step} value={value} style={{ ['--pct' as string]: `${pct}%` }} onChange={(e) => onChange(+e.target.value)} />
 }
 
-export function Toggle({ on, onChange, label, ariaLabel }: { on: boolean; onChange: (v: boolean) => void; label?: ReactNode; ariaLabel?: string }) {
+export function Toggle({ on, onChange, label, ariaLabel, disabled }: { on: boolean; onChange: (v: boolean) => void; label?: ReactNode; ariaLabel?: string; disabled?: boolean }) {
   return (
-    <label className="inline-flex items-center gap-2.5 cursor-pointer select-none">
-      <button type="button" role="switch" aria-label={ariaLabel} aria-checked={on} onClick={() => onChange(!on)} className={cx('relative h-[18px] w-8 rounded-full transition-colors', on ? 'bg-accent' : 'bg-fg/15')}>
-        <span className={cx('absolute left-0 top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow transition-transform', on ? 'translate-x-[16px]' : 'translate-x-[2px]')} />
+    <label className={cx('inline-flex items-center gap-2.5 select-none', disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer')}>
+      <button type="button" role="switch" disabled={disabled} aria-label={ariaLabel} aria-checked={on} onClick={() => onChange(!on)} className={cx('toggle relative h-[18px] w-8 rounded-full transition-colors duration-200', on ? 'bg-accent on' : 'bg-fg/15')}>
+        <span className={cx('absolute left-0 top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow transition-transform duration-200 ease-[cubic-bezier(.3,1.5,.6,1)]', on ? 'translate-x-[16px]' : 'translate-x-[2px]')} />
       </button>
       {label && <span className="text-[13px]">{label}</span>}
     </label>

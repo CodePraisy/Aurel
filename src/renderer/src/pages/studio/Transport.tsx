@@ -8,6 +8,7 @@ import { cx, Slider, Popover, Toggle, fmtTime, Modal } from '@/components/ui'
 import { beatTicks, measureTicks } from '@/music/theory'
 import { tempoMap } from '@/music/score'
 import { uid } from '@/music/score'
+import { ChordDiagram } from '@/components/ChordDiagram'
 
 export function toggleLoop(): void {
   const st = useProject.getState()
@@ -51,6 +52,7 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
   const timeRef = useRef<HTMLSpanElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const knobRef = useRef<HTMLDivElement>(null)
+  const chordRef = useRef<HTMLSpanElement>(null)
   const dragFrac = useRef<number | null>(null)
   const mt = measureTicks(project.score.timeSig)
   const beat = beatTicks(project.score.timeSig)
@@ -58,11 +60,25 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
   useEffect(() => {
     let raf = 0
     const tm = tempoMap(project.score, 1)
+    // the chord sounding now: the last chord symbol at or before the playhead
+    const chords = (project.score.chords ?? []).map((c) => ({ at: c.measure * mt + c.tick, name: c.name })).sort((a, b) => a.at - b.at)
+    let shownChord = ''
     const f = () => {
       const t = player.getTick()
       const m = Math.floor(t / mt)
       const b = Math.floor((t - m * mt) / beat)
       if (posRef.current) posRef.current.textContent = `${m + 1}.${b + 1}`
+      if (chordRef.current && chords.length) {
+        let name = ''
+        for (const c of chords) { if (c.at > t + 1) break; name = c.name }
+        if (name !== shownChord) {
+          shownChord = name
+          chordRef.current.textContent = name ? name.replace(/([A-G])b/g, '$1♭').replace(/#/g, '♯') : '–'
+          chordRef.current.classList.remove('chord-flip')
+          void chordRef.current.offsetWidth
+          chordRef.current.classList.add('chord-flip')
+        }
+      }
       if (timeRef.current) timeRef.current.textContent = fmtTime(tm.tickToSec(t))
       const frac = dragFrac.current ?? Math.min(1, t / Math.max(1, player.endTick))
       if (barRef.current) barRef.current.style.width = `${frac * 100}%`
@@ -85,7 +101,7 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
   const bars = project.score.parts[0]?.measures.length ?? Math.ceil(total / mt)
 
   return (
-    <div className="shrink-0 border-t border-line bg-panel/70 backdrop-blur">
+    <div className="transport shrink-0 border-t border-line">
       <div className="group relative h-3 -mt-1.5 cursor-pointer touch-none select-none"
         onPointerDown={(e) => {
           const el = e.currentTarget
@@ -117,7 +133,7 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
       <div className="min-h-[58px] flex flex-wrap items-center px-4 py-1 gap-2">
         {project.audio && project.score.parts.length > 0 && <ListenSwitch solo={project.score.parts.some((part) => part.solo)} />}
         <button className="icon-btn" title="Back to start (Home)" onClick={() => player.stop()}><SkipBack size={17} /></button>
-        <button className={cx('h-10 w-10 rounded-full flex items-center justify-center bg-accent text-bg hover:brightness-110 transition', p.state === 'playing' && 'pulse')} title={p.preparingFx ? 'Cancel' : 'Play / pause (Space)'} onClick={() => player.toggle()}>
+        <button className={cx('play-btn h-10 w-10 rounded-full flex items-center justify-center bg-accent text-bg hover:brightness-110 transition', p.state === 'playing' && 'pulse playing')} title={p.preparingFx ? 'Cancel' : 'Play / pause (Space)'} onClick={() => player.toggle()}>
           {p.preparingFx ? <Loader2 size={18} className="animate-spin" /> : p.state === 'playing' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
         </button>
         <button className="icon-btn" title="Stop" onClick={() => player.stop()}><Square size={15} /></button>
@@ -125,6 +141,13 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
           <div className="font-mono text-[17px] tabular-nums"><span ref={posRef}>1.1</span></div>
           <div className="text-[11px] text-faint tabular-nums">{p.preparingFx ? <span className="text-accent">Loading plug-ins…</span> : <span ref={timeRef}>0:00</span>}{p.countingIn && <span className="text-accent ml-1.5">count-in</span>}</div>
         </div>
+        {!!project.score.chords?.length && (settings?.chordSymbols ?? true) && (
+          <Popover width={300} side="top" trigger={(t) => (
+            <button className="now-chord" title="Chord at the playhead · click for the chords of this song" onClick={t}><span className="label !text-[9.5px]">Chord</span><span ref={chordRef} className="font-display text-[19px] leading-none">–</span></button>
+          )}>
+            {() => <SongChords names={[...new Set(project.score.chords!.map((c) => c.name.split('/')[0]))]} />}
+          </Popover>
+        )}
         <div className="flex flex-col items-start text-[12px] text-muted leading-tight w-[86px]">
           <button className="rounded px-1 hover:bg-fg/[0.08] hover:text-accent" title="Edit score tempo" onClick={() => onEditRhythm('tempo')} onContextMenu={(e) => { e.preventDefault(); onEditRhythm('tempo') }}><span className="text-fg font-medium tabular-nums">{Math.round(project.score.tempo * o.speed * 10) / 10}</span> BPM</button>
           <button className="rounded px-1 hover:bg-fg/[0.08] hover:text-accent" title="Edit time signature" onClick={() => onEditRhythm('meter')} onContextMenu={(e) => { e.preventDefault(); onEditRhythm('meter') }}>{project.score.timeSig.num}/{project.score.timeSig.den}</button>
@@ -162,6 +185,23 @@ export default function Transport({ project, onEditRhythm, onTranspose }: { proj
         {p.dropouts > 0 && <button className="chip !text-warn ml-1" title="The plug-ins could not keep up and the sound dropped out. Try a larger buffer size in Settings → Audio device. Click to dismiss." onClick={() => { player.dropouts = 0; player.setOptions({}) }}>Audio dropouts: {p.dropouts}</button>}
         <div className="flex-1" />
         <BarCount project={project} />
+      </div>
+    </div>
+  )
+}
+
+/** Every chord of the song as a guitar chord box, in the order they first appear. */
+function SongChords({ names }: { names: string[] }) {
+  return (
+    <div className="p-2">
+      <div className="label mb-2">Chords in this song</div>
+      <div className="grid grid-cols-4 gap-x-2 gap-y-1 max-h-[280px] overflow-auto stagger-fast">
+        {names.slice(0, 24).map((n) => (
+          <div key={n} className="flex flex-col items-center text-fg">
+            <span className="font-display text-[13px] leading-none mb-0.5">{n.replace(/([A-G])b/g, '$1♭').replace(/#/g, '♯')}</span>
+            <ChordDiagram name={n} size={0.8} />
+          </div>
+        ))}
       </div>
     </div>
   )

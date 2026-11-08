@@ -4,3 +4,8 @@ transkun==2.0.1            # piano and guitar notes (MIT, weights included)
 torchcrepe==0.0.24         # bass and singing pitch (MIT, weights included)
 onnxruntime>=1.18,<2       # runs the Beat This! beat and downbeat model
 adtof-pytorch @ https://github.com/xavriley/ADTOF-pytorch/archive/85c192e78f716ea0b111cc8a5ee4a8f6a3a4f8a9.zip
+# BS-RoFormer separation (code vendored in sep_roformer/, MIT; weights downloaded on first use)
+einops>=0.7,<0.9
+rotary-embedding-torch>=0.6.1,<0.7
+beartype>=0.18.5,<0.19
+pyyaml>=6

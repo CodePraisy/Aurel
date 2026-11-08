@@ -42,7 +42,9 @@ export function normalizeMeasure(m: Measure, mt: number): Measure {
     const pieces = decompose(start, end - start)
     pieces.forEach((d, k) => {
       const last = k === pieces.length - 1
-      out.push({ ...e, id: k === 0 ? e.id : uid(), start: pos, dur: d, tie: last ? e.tie : true, dynamic: k === 0 ? e.dynamic : undefined, arpeggio: k === 0 ? e.arpeggio : undefined })
+      // bends and vibrato belong to the attack; slides and hammer-ons lead into the next note
+      const tech = e.tech?.filter((t) => (t === 'slide' || t === 'hammer' ? last : k === 0))
+      out.push({ ...e, id: k === 0 ? e.id : uid(), start: pos, dur: d, tie: last ? e.tie : true, dynamic: k === 0 ? e.dynamic : undefined, arpeggio: k === 0 ? e.arpeggio : undefined, strum: k === 0 ? e.strum : undefined, tech: tech?.length ? tech : undefined, bend: k === 0 ? e.bend : undefined })
       pos += d
     })
   }

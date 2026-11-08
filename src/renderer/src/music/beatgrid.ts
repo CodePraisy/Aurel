@@ -1,4 +1,4 @@
-import type { EngineGrid, RhythmDetail, TempoChange } from '@shared/types'
+import type { EngineGrid, RhythmDetail, TempoChange, Technique } from '@shared/types'
 import { PPQ } from '@shared/types'
 
 /**
@@ -15,13 +15,15 @@ export interface RhythmOptions {
   detail: RhythmDetail
   fillGaps: boolean
   straightSwing: boolean
+  /** write triplets in simple meters where the notes clearly divide a beat in three */
+  triplets?: boolean
 }
 
-export const DEFAULT_RHYTHM: RhythmOptions = { detail: 'standard', fillGaps: true, straightSwing: true }
+export const DEFAULT_RHYTHM: RhythmOptions = { detail: 'standard', fillGaps: true, straightSwing: true, triplets: true }
 
-export interface BeatNote { b: number; be: number; p: number; v: number }
+export interface BeatNote { b: number; be: number; p: number; v: number; strum?: 'down' | 'up'; tech?: Technique[]; bend?: number }
 
-export interface GridOnset { tick: number; end: number; pitches: Map<number, number> }
+export interface GridOnset { tick: number; end: number; pitches: Map<number, number>; strum?: 'down' | 'up'; tech?: Technique[]; bend?: number }
 
 /** Ticks in one tracked beat, and the subdivisions a beat may use. */
 export function beatFrame(grid: EngineGrid, detail: RhythmDetail): { beatTicks: number; divisions: number[] } {
@@ -35,6 +37,12 @@ export function beatFrame(grid: EngineGrid, detail: RhythmDetail): { beatTicks: 
   return { beatTicks: PPQ, divisions: detail === 'simple' ? [1, 2] : detail === 'standard' ? [1, 2, 4] : [1, 2, 4, 8] }
 }
 
+/** Simple meters (2/4, 3/4, 4/4…) are where a triplet is a special case worth writing. */
+function beatFrameIsSimple(grid: EngineGrid): boolean {
+  const ts = grid.timeSig ?? { num: grid.meter, den: 4 }
+  return ts.den === 4 && grid.meter !== 6
+}
+
 /** Swung eighths (long-short) written as straight eighths. */
 export function unswing(frac: number, swing: number | undefined, on: boolean): number {
   if (!on || !swing || swing < 0.56 || swing > 0.8) return frac
@@ -42,17 +50,30 @@ export function unswing(frac: number, swing: number | undefined, on: boolean): n
 }
 
 const distance = (f: number, d: number) => Math.abs(f - Math.round(f * d) / d)
+const worst = (fracs: number[], d: number) => Math.max(...fracs.map((f) => distance(f, d)))
 
 /**
  * The simplest subdivision for each beat: the coarsest one that puts every onset in that beat
  * within reach of a grid line (a little over half a step, which absorbs human timing).
+ *
+ * With `triplets`, a beat is written in three only when that fits clearly better than the binary
+ * values: some note must sit near a third of the beat (not near a quarter), and all of them
+ * within ~6% of a beat of the triplet lines. Sloppy sixteenths stay sixteenths.
  */
-export function chooseDivisions(fracsByBeat: Map<number, number[]>, divisions: number[]): Map<number, number> {
+export function chooseDivisions(fracsByBeat: Map<number, number[]>, divisions: number[], triplets: number[] = []): Map<number, number> {
   const out = new Map<number, number>()
   for (const [beat, fracs] of fracsByBeat) {
     let pick = divisions[divisions.length - 1]
     for (const d of divisions) {
       if (fracs.every((f) => distance(f, d) <= (0.5 / d) * 0.62)) { pick = d; break }
+    }
+    if (triplets.length && pick >= 4 && fracs.length >= 2) {
+      const binary = worst(fracs, Math.max(4, pick))
+      for (const t of triplets) {
+        const fit = worst(fracs, t)
+        const thirds = fracs.some((f) => distance(f, 3) < 0.05 && distance(f, 4) > 0.06)
+        if (thirds && fit <= 0.06 && fit + 0.025 < binary) { pick = t; break }
+      }
     }
     out.set(beat, pick)
   }
@@ -85,7 +106,9 @@ export function quantizeOnGrid(notes: BeatNote[], grid: EngineGrid, opts: Rhythm
     const f = unswing(n.b - beat, grid.swing, opts.straightSwing)
     ;(fracs.get(beat) ?? fracs.set(beat, []).get(beat)!).push(f)
   }
-  const divisions = chooseDivisions(fracs, frame.divisions)
+  const simple = beatFrameIsSimple(grid)
+  const tripletDivs = opts.triplets !== false && simple ? (opts.detail === 'detailed' ? [3, 6] : [3]) : []
+  const divisions = chooseDivisions(fracs, frame.divisions, tripletDivs)
   const fallback = frame.divisions.includes(2) ? 2 : frame.divisions[1] ?? 1
   const divisionOf = (beat: number) => divisions.get(beat) ?? fallback
   const byTick = new Map<number, GridOnset>()
@@ -95,6 +118,8 @@ export function quantizeOnGrid(notes: BeatNote[], grid: EngineGrid, opts: Rhythm
     const end = Math.max(tick + stepTicks, snap(Math.max(n.be, n.b), divisionOf, frame, grid.swing, opts.straightSwing))
     let on = byTick.get(tick)
     if (!on) { on = { tick, end, pitches: new Map() }; byTick.set(tick, on) }
+    if (n.strum) on.strum = n.strum
+    if (n.tech?.length) { on.tech = [...new Set([...(on.tech ?? []), ...n.tech])]; if (n.bend) on.bend = n.bend }
     on.end = Math.max(on.end, end)
     on.pitches.set(n.p, Math.max(on.pitches.get(n.p) ?? 0, n.v))
   }

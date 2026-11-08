@@ -39,6 +39,8 @@ export interface NoteEvent {
   bend?: number // semitones for 'bend'
   dynamic?: Dynamic
   arpeggio?: Arpeggio
+  /** strum direction heard in the recording (shown as an arrow over the tab) */
+  strum?: 'down' | 'up'
 }
 
 export interface Measure { events: NoteEvent[] }
@@ -84,7 +86,11 @@ export interface Score {
   timeSig: { num: number; den: number }
   keyFifths: number // -7..7
   parts: Part[]
+  /** chord symbols over the top staff (detected from the recording, or typed in) */
+  chords?: ChordSymbol[]
 }
+
+export interface ChordSymbol { measure: number; tick: number; name: string }
 
 /** What you hear: the original recording, the transcribed notes, or each part's own choice. */
 export type Listen = 'original' | 'transcription' | 'parts'
@@ -233,6 +239,15 @@ export interface Settings {
   ytDlpPath: string
   device: 'auto' | 'cuda' | 'cpu'
   separationModel: 'htdemucs_6s' | 'htdemucs' | 'htdemucs_ft'
+  /** auto = BS-RoFormer on an NVIDIA GPU, Demucs on the processor */
+  separator: 'auto' | 'roformer' | 'demucs'
+  bleedCheck: boolean // drop notes that sound much louder in another instrument's stem
+  chordSymbols: boolean // detect chords and print chord symbols over the score
+  chordCleanup: boolean // drop weak notes that fit no chord
+  triplets: boolean // write triplets where the recording plays them
+  detectTechniques: boolean // bends, slides, vibrato and hammer-ons on single-note lines
+  strumArrows: boolean // show strum direction over guitar tab
+  customNoteModel: string // fine-tuned Transkun checkpoint ('' = built-in)
   drumSplit: boolean
   // ---- transcription (engine 2)
   transcribeQuality: TranscribeQuality
@@ -243,7 +258,7 @@ export interface Settings {
   followTempo: boolean // score tempo follows the recording bar by bar
   vocalMelody: boolean // write the singer's melody as notes under the words
   lyricWords: boolean // recognise the singer's words
-  lyricsModel: 'base' | 'small'
+  lyricsModel: 'base' | 'small' | 'medium' | 'turbo'
   lyricsLanguage: string // '' = detect
   drumModel: 'adtof' | 'basic'
   guitarChordLimit: number // most notes in one guitar chord
@@ -324,6 +339,10 @@ export interface EngineAnalysis {
     traits?: Record<string, string>
   }[]
   /** s/e in seconds; b/be in beats on the grid (engine 2) */
-  notes: Record<string, { s: number; e: number; p: number; v: number; b?: number; be?: number }[]>
+  notes: Record<string, { s: number; e: number; p: number; v: number; b?: number; be?: number; strum?: 'down' | 'up'; tech?: Technique[]; bend?: number }[]>
   drums?: { t: number; piece: string; v: number; b?: number }[]
+  /** engine 3: chord symbols on the beat grid, and the key of the song */
+  chords?: { b: number; be: number; s: number; e: number; name: string }[]
+  key?: { tonic: number; mode: string; name: string; fifths: number; confidence: number }
+  bleed?: Record<string, number>
 }

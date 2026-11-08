@@ -24,7 +24,12 @@ export function useStudioKeys(enabled: boolean, onToggleLoop: () => void): void 
     let fretState: { cursor: ReturnType<typeof useProject.getState>['cursor']; sel: string | null } | null = null
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
-      if (t.closest('input, textarea, select, [contenteditable], [data-keyboard-menu], [data-context-menu], [data-select-popup]')) return
+      // the sidebar menu keeps its own arrow keys when you are in it
+      if (t.closest('textarea, select, [contenteditable], [data-context-menu], [data-select-popup], [role="dialog"], nav')) return
+      if (t instanceof HTMLInputElement && !(t.type === 'range' && (e.key === ' ' || e.key === 'Home'))) return
+      // a closed picker keeps arrows for opening itself; everything else in the studio gives them to the score
+      if (t.closest('[data-keyboard-menu]') && (t.closest('[data-keyboard-menu]') as HTMLElement).querySelector('[aria-expanded="true"]')) return
+      if (t.closest('[data-keyboard-menu]') && !e.key.startsWith('Arrow') && e.key !== ' ') return
       const st = useProject.getState()
       const p = st.project
       if (!p) return
@@ -37,7 +42,19 @@ export function useStudioKeys(enabled: boolean, onToggleLoop: () => void): void 
 
       if (k === ' ') { handled(); if (!e.repeat) player.toggle(); return }
       if (k === 'Home') { handled(); player.stop(); return }
-      if (part?.kind === 'singer' && !part.measures.some((m) => m.events.some((ev) => !ev.rest))) return
+      // arrows work before anything is selected: start on the first note of the first part
+      if (!part && k.startsWith('Arrow') && !ctrl && !e.altKey) {
+        const first = p.score.parts.find((x) => x.measures.some((m) => m.events.some((ev) => !ev.rest))) ?? p.score.parts[0]
+        if (first) {
+          handled()
+          const mi = Math.max(0, first.measures.findIndex((m) => m.events.some((ev) => !ev.rest)))
+          const ev = first.measures[mi]?.events.find((x) => !x.rest) ?? first.measures[mi]?.events[0]
+          useProject.setState({ cursor: { partId: first.id, measure: mi, tick: ev?.start ?? 0 }, sel: ev?.id ?? null })
+        }
+        return
+      }
+      const lyricsOnly = part?.kind === 'singer' && !part.measures.some((m) => m.events.some((ev) => !ev.rest))
+      if (lyricsOnly && !k.startsWith('Arrow')) return
       if (ctrl && k.toLowerCase() === 'z') { handled(); if (e.shiftKey) st.redo(); else st.undo(); return }
       if (ctrl && k.toLowerCase() === 'y') { handled(); st.redo(); return }
       if (ctrl && k.toLowerCase() === 'c') { handled(); st.copy(); return }
@@ -121,7 +138,13 @@ export function useStudioKeys(enabled: boolean, onToggleLoop: () => void): void 
       e.preventDefault()
       e.stopPropagation()
     }
-    const blurButtons = () => { const a = document.activeElement as HTMLElement | null; if (a && a.tagName === 'BUTTON') a.blur() }
+    // after a click, give the keyboard back to the score: a focused button would swallow Space,
+    // and a focused slider or picker would swallow the arrow keys
+    const blurButtons = () => {
+      const a = document.activeElement as HTMLElement | null
+      if (!a || a.closest('[data-keyboard-menu][aria-expanded="true"], [data-select-popup], [data-context-menu], [role="dialog"]')) return
+      if (a.tagName === 'BUTTON' || (a instanceof HTMLInputElement && a.type === 'range') || a.getAttribute('role') === 'slider') a.blur()
+    }
     window.addEventListener('keydown', h, true)
     window.addEventListener('keyup', ku, true)
     window.addEventListener('mouseup', blurButtons)

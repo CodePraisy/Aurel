@@ -35,7 +35,7 @@ import traceback
 from importlib import metadata
 
 SR = 44100
-ENGINE_VERSION = 2
+ENGINE_VERSION = 3
 
 # Quality presets: how hard separation works, and which models are used.
 QUALITY = {
@@ -45,7 +45,7 @@ QUALITY = {
 }
 
 CORE = ("torch", "torchaudio", "demucs", "basic-pitch", "librosa", "numpy", "scipy", "openai-whisper")
-OPTIONAL = ("transkun", "onnxruntime", "torchcrepe", "adtof-pytorch")
+OPTIONAL = ("transkun", "onnxruntime", "torchcrepe", "adtof-pytorch", "einops", "rotary-embedding-torch", "beartype")
 
 
 def emit(kind: str, **kw) -> None:
@@ -180,6 +180,109 @@ def separate(mix, model_name: str, device: str, p0: float, p1: float, shifts: in
     return {name: out[i].cpu().numpy().astype(np.float32) for i, name in enumerate(model.sources)}
 
 
+ROFORMER_MODELS = {
+    # jarredou's six-stem BS-RoFormer (MVSEP "BS Roformer SW"): bass 14.6, drums 14.1, guitar 9.1,
+    # piano 7.8, vocals 11.3 dB SDR — several dB ahead of htdemucs_6s on guitar and piano.
+    "bs_roformer_sw": {"ckpt": "BS-Roformer-SW.ckpt", "yaml": "BS-Roformer-SW.yaml", "size_mb": 700},
+}
+ROFORMER_MIRROR = "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs"
+
+
+def roformer_paths(models_dir: str, name: str):
+    import os
+
+    spec = ROFORMER_MODELS[name]
+    d = os.path.join(models_dir, "roformer")
+    return os.path.join(d, spec["ckpt"]), os.path.join(d, spec["yaml"])
+
+
+def download(url: str, dest: str, stage: str, p: float = -1) -> None:
+    """Download with progress, into a temporary file that is renamed when complete."""
+    import os
+    import urllib.request
+
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + ".part"
+    with urllib.request.urlopen(url, timeout=60) as r, open(tmp, "wb") as f:
+        total = int(r.headers.get("Content-Length") or 0)
+        got, last = 0, 0.0
+        while True:
+            chunk = r.read(1 << 20)
+            if not chunk:
+                break
+            f.write(chunk)
+            got += len(chunk)
+            if total and got / total - last > 0.02:
+                last = got / total
+                progress(stage, p, f"{got / 1e6:.0f} of {total / 1e6:.0f} MB")
+    os.replace(tmp, dest)
+
+
+def cmd_prepare_roformer(models_dir: str, name: str) -> None:
+    import os
+
+    ckpt, yml = roformer_paths(models_dir, name)
+    for path in (yml, ckpt):
+        if not os.path.exists(path):
+            download(f"{ROFORMER_MIRROR}/{os.path.basename(path)}", path, "Downloading the separation model")
+    emit("done", path=ckpt)
+
+
+def separate_roformer(mix, models_dir: str, name: str, device: str, p0: float, p1: float, overlap: int = 2):
+    """Band-Split RoFormer separation (Lu et al. 2024; weights by the MVSEP community).
+
+    The track is cut into ~13 s windows; `overlap` windows cover every sample and are blended
+    with a fade so there are no seams. Returns {source_name: (2, n) array} like `separate`.
+    """
+    import os
+    import numpy as np
+    import torch
+    import yaml
+
+    from sep_roformer.bs_roformer import BSRoformer
+
+    ckpt, yml = roformer_paths(models_dir, name)
+    if not os.path.exists(ckpt):
+        cmd_prepare_roformer(models_dir, name)
+    progress("Loading separation model", p0, f"BS-RoFormer on {device.upper()}")
+    with open(yml, encoding="utf-8") as f:
+        cfg = yaml.load(f, Loader=yaml.FullLoader)
+    mc = dict(cfg["model"])
+    for k in ("multi_stft_resolution_loss_weight", "multi_stft_resolutions_window_sizes", "multi_stft_hop_size", "multi_stft_normalized"):
+        mc.pop(k, None)
+    model = BSRoformer(**mc)
+    state = torch.load(ckpt, map_location="cpu", weights_only=False)
+    model.load_state_dict(state.get("state_dict", state) if isinstance(state, dict) else state)
+    model.to(device).eval()
+    # on a GPU the matrix work runs in half precision via autocast (the STFT and rotary
+    # embeddings stay in full precision), the same way audio-separator runs these weights
+    half = device == "cuda"
+    names = list(cfg["training"]["instruments"])
+    size = int(cfg["audio"]["chunk_size"])
+    step = size // max(1, overlap)
+    n = mix.shape[1]
+    pad = size - step
+    x = np.pad(mix, ((0, 0), (pad, pad + size)), mode="constant")
+    fade = np.ones(size, dtype=np.float32)
+    ramp = np.linspace(0, 1, pad, dtype=np.float32) if pad else np.zeros(0, np.float32)
+    fade[:pad] = ramp
+    fade[size - pad:] = ramp[::-1]
+    out = np.zeros((len(names), 2, x.shape[1]), dtype=np.float32)
+    weight = np.zeros(x.shape[1], dtype=np.float32)
+    starts = list(range(0, x.shape[1] - size + 1, step))
+    with torch.inference_mode():
+        for i, s in enumerate(starts):
+            chunk = torch.from_numpy(np.ascontiguousarray(x[:, s:s + size]))[None].to(device)
+            with torch.autocast("cuda", dtype=torch.float16, enabled=half):
+                y = model(chunk)[0].float().cpu().numpy()
+            out[:, :, s:s + size] += y * fade
+            weight[s:s + size] += fade
+            progress("Separating instruments", p0 + (p1 - p0) * ((i + 1) / len(starts)), f"{device.upper()} · part {i + 1} of {len(starts)}")
+    out = out / np.maximum(weight, 1e-6)
+    out = out[:, :, pad:pad + n]
+    return {nm: out[i] for i, nm in enumerate(names)}
+
+
 def isolate_vocals(vocals, rest):
     """Keep only the singer(s) in the vocal stem.
 
@@ -226,6 +329,11 @@ def load_stems_dir(d: str):
         if f.lower().endswith(".wav"):
             _, a = read_wav(os.path.join(d, f))
             stems[os.path.splitext(f)[0]] = a
+    # stems written by an earlier run: a hard-panned guitar pair goes back together
+    if "guitar" not in stems and "guitar_L" in stems and "guitar_R" in stems:
+        import numpy as np
+
+        stems["guitar"] = np.stack([stems.pop("guitar_L")[0], stems.pop("guitar_R")[1]])
     return stems
 
 
@@ -470,7 +578,7 @@ PITCH_RANGES = {
     "vocals": (75, 1100, 0.6, 0.35, 90),
     "guitar": (75, 1400, 0.5, 0.3, 60),
     "piano": (27, 4200, 0.5, 0.3, 58),
-    "other": (50, 3000, 0.55, 0.35, 70),
+    "other": (50, 3000, 0.65, 0.4, 120),  # tuned on Bach10 (real strings and winds): F1 0.555 -> 0.608
 }
 MIDI_RANGE = {"guitar": (38, 90), "bass": (26, 67), "piano": (21, 108), "other": (28, 100), "vocals": (40, 84)}
 
@@ -507,8 +615,12 @@ def poly_transkun(audio, device: str):
         base = os.path.join(os.path.dirname(transkun.__file__), "pretrained")
         conf = moduleconf.parseFromFile(os.path.join(base, "2.0.conf"))
         model = conf["Model"].module.TransKun(conf=conf["Model"].config)
-        ck = torch.load(os.path.join(base, "2.0.pt"), map_location="cpu")
-        model.load_state_dict(ck.get("best_state_dict", ck.get("state_dict")), strict=False)
+        custom = os.environ.get("AUREL_TRANSKUN_CHECKPOINT")
+        path = custom if custom and os.path.exists(custom) else os.path.join(base, "2.0.pt")
+        ck = torch.load(path, map_location="cpu", weights_only=False)
+        model.load_state_dict(ck.get("best_state_dict") or ck.get("state_dict") or ck, strict=False)
+        if path == custom:
+            log("Using the fine-tuned note model", custom)
         _transkun = model.eval()
     model = _transkun.to(device)
     x = audio.T if audio.shape[0] == 2 else np.stack([audio, audio], 1)
@@ -519,7 +631,7 @@ def poly_transkun(audio, device: str):
     return [{"s": float(n.start), "e": float(n.end), "p": int(n.pitch), "v": int(n.velocity)} for n in notes if 0 < n.pitch < 128]
 
 
-def clean_poly(notes, family: str, sens: float, max_poly: int, rules=("range", "blips", "ghosts", "strums")):
+def clean_poly(notes, family: str, sens: float, max_poly: int, rules=("range", "blips", "ghosts", "strums"), ghost_margin=None, blip_vel=70, blip_len=None):
     """Take out what a listener would not call a note: overtones, bleed and blips.
 
     - range: notes outside what the instrument can play
@@ -536,9 +648,9 @@ def clean_poly(notes, family: str, sens: float, max_poly: int, rules=("range", "
     lo, hi = MIDI_RANGE.get(family, (21, 108)) if "range" in rules else (0, 127)
     notes = [dict(n) for n in notes if lo <= n["p"] <= hi]
     strict = 0.5 + (0.5 - sens)  # 0..1, higher removes more
-    min_len = 0.045 + 0.04 * strict
+    min_len = blip_len if blip_len is not None else 0.045 + 0.04 * strict
     if "blips" in rules:
-        notes = [n for n in notes if n["e"] - n["s"] >= min_len or n["v"] > 70]
+        notes = [n for n in notes if n["e"] - n["s"] >= min_len or n["v"] > blip_vel]
     if not notes:
         return notes
     notes.sort(key=lambda n: n["s"])
@@ -546,7 +658,7 @@ def clean_poly(notes, family: str, sens: float, max_poly: int, rules=("range", "
     vel = np.array([n["v"] for n in notes], dtype=float)
     keep = np.ones(len(notes), bool)
     # ghosts: quieter than the loudest note starting within ±120 ms by more than a margin
-    margin = 34 - 14 * strict
+    margin = ghost_margin if ghost_margin is not None else 34 - 14 * strict
     for i, n in enumerate(notes):
         if "ghosts" not in rules:
             break
@@ -573,6 +685,14 @@ def clean_poly(notes, family: str, sens: float, max_poly: int, rules=("range", "
     out = []
     for c in clusters:
         t = c[0]["s"]
+        strum = None
+        if len(c) >= 3 and c[-1]["s"] - c[0]["s"] >= 0.012:
+            # a down-stroke hits the low strings first, an up-stroke the high ones
+            order = np.corrcoef([n["s"] for n in c], [n["p"] for n in c])[0, 1]
+            if order > 0.6:
+                strum = "down"
+            elif order < -0.6:
+                strum = "up"
         c = sorted(c, key=lambda n: -n["v"])
         seen = set()
         for n in c:
@@ -581,7 +701,7 @@ def clean_poly(notes, family: str, sens: float, max_poly: int, rules=("range", "
             seen.add(n["p"])
             if len(seen) > max_poly:
                 break
-            out.append({**n, "s": t, "e": max(n["e"], t + 0.05)})
+            out.append({**n, "s": t, "e": max(n["e"], t + 0.05), **({"strum": strum} if strum else {})})
     out.sort(key=lambda n: (n["s"], n["p"]))
     return out
 
@@ -767,15 +887,21 @@ def transcribe_drums(audio, out_dir: str | None):
 
 
 # --------------------------------------------------------------------------- words
-def transcribe_words(audio, models_dir, language: str | None = None, model_name: str = "base"):
+def transcribe_words(audio, models_dir, language: str | None = None, model_name: str = "base", device: str = "cpu"):
     import librosa
     import whisper
 
     mono = audio.mean(0)
     samples = librosa.resample(mono, orig_sr=SR, target_sr=16000)
-    model = whisper.load_model(model_name, device="cpu", download_root=models_dir)
-    result = model.transcribe(samples, fp16=False, word_timestamps=True, condition_on_previous_text=False, verbose=None,
-                              language=language or None)
+    # on an NVIDIA GPU Whisper runs in half precision there: the large models become usable
+    dev = "cuda" if device == "cuda" else "cpu"
+    model = whisper.load_model(model_name, device=dev, download_root=models_dir)
+    opts = dict(fp16=dev == "cuda", word_timestamps=True, condition_on_previous_text=False, verbose=None, language=language or None)
+    try:
+        # skip words "heard" in long instrumental passages (a known Whisper hallucination)
+        result = model.transcribe(samples, hallucination_silence_threshold=2.0, **opts)
+    except TypeError:
+        result = model.transcribe(samples, **opts)
     words = []
     for segment in result.get("segments", []):
         if segment.get("no_speech_prob", 0) > 0.6:
@@ -813,6 +939,318 @@ def snap_words(words, sung):
 
 
 # --------------------------------------------------------------------------- pipeline
+def detect_techniques(notes, mono, device: str = "cpu"):
+    """Bends, vibrato, slides and hammer-ons on single-note guitar lines, from the pitch curve.
+
+    Only notes that sound alone are looked at (a pitch tracker follows one note), so chords keep
+    their notes as they are. Each technique needs clear evidence:
+      bend     the pitch rises at least ~0.8 semitone above the fretted note and holds there
+      vibrato  the pitch wobbles 4–9 times a second by 0.3–1.5 semitones for at least 0.25 s
+      slide    the pitch glides into the next note with no new pick attack between them
+      hammer   the next note starts with no gap, a step or two away, much softer than the first
+    """
+    import numpy as np
+    from scipy.ndimage import median_filter, uniform_filter1d
+
+    if len(notes) < 3:
+        return 0
+    notes.sort(key=lambda n: n["s"])
+    alone = []
+    for i, n in enumerate(notes):
+        lo, hi = n["s"] + 0.03, n["e"] - 0.03
+        if n["e"] - n["s"] >= 0.12 and not any(o is not n and o["s"] < hi and o["e"] > lo for o in notes[max(0, i - 8): i + 8]):
+            alone.append(i)
+    if len(alone) < 3:
+        return 0
+    f0, conf = f0_track(mono, 70, 1400, device)
+    f0 = median_filter(f0, 3)
+    marked = 0
+
+    def curve(t0, t1, p):
+        a, b = max(0, int(t0 * 100)), min(len(f0), int(t1 * 100))
+        if b - a < 4:
+            return None
+        c = (f0[a:b] - p) * 100
+        ok = conf[a:b] > 0.35
+        if ok.mean() < 0.6:
+            return None
+        return np.where(ok, c, np.nan)
+
+    alone_set = set(alone)
+    for k, i in enumerate(alone):
+        n = notes[i]
+        nxt = notes[i + 1] if i + 1 < len(notes) else None
+        legato = nxt is not None and i + 1 in alone_set and 0 <= nxt["s"] - n["e"] < 0.04
+        # a glide into the next note is a slide, not a bend: leave the last 120 ms out of the bend check
+        c = curve(n["s"] + 0.03, n["e"] - (0.12 if legato and abs(nxt["p"] - n["p"]) >= 2 else 0.02), n["p"])
+        if c is None:
+            continue
+        cc = np.nan_to_num(c, nan=0.0)
+        tech = []
+        start = np.nanmedian(c[:6])
+        top = np.nanpercentile(c, 92)
+        if abs(start) < 45 and top > 80 and (cc > 70).sum() >= 5:
+            tech.append("bend")
+            n["bend"] = float(min(2.0, max(0.5, round(top / 50) / 2)))
+        elif len(cc) >= 25:
+            wob = cc - uniform_filter1d(cc, 15)
+            crossings = np.sum(np.diff(np.sign(wob)) != 0)
+            rate = crossings / 2 / (len(cc) / 100)
+            depth = np.percentile(wob, 95) - np.percentile(wob, 5)
+            if 4 <= rate <= 9 and 30 <= depth <= 150:
+                tech.append("vibrato")
+        if legato:
+            step = nxt["p"] - n["p"]
+            tail = curve(max(n["s"] + 0.03, n["e"] - 0.1), n["e"], n["p"])
+            if abs(step) >= 2 and tail is not None and np.isfinite(tail).sum() >= 4:
+                moved = np.nanmean(tail[-3:]) - np.nanmean(tail[:3])
+                if moved * np.sign(step) > 60:
+                    tech.append("slide")
+            elif 1 <= abs(step) <= 4 and nxt.get("v", 80) < 0.7 * n.get("v", 80) and "bend" not in tech:
+                tech.append("hammer")
+        if tech:
+            n["tech"] = tech
+            marked += 1
+    return marked
+
+
+# --------------------------------------------------------------------------- the parts, together
+PITCHED = ("guitar", "bass", "piano", "other", "vocals")
+
+
+def note_salience(stems: dict, names: list[str]):
+    """Constant-Q magnitude of each stem (C1..C8, 100 frames a second), to compare how strongly a
+    pitch sounds in one stem against the others."""
+    import numpy as np
+    import librosa
+
+    out = {}
+    for name in names:
+        mono = stems[name].mean(0)
+        y = librosa.resample(mono, orig_sr=SR, target_sr=22050)
+        C = np.abs(librosa.cqt(y, sr=22050, hop_length=220, fmin=librosa.note_to_hz("C1"), n_bins=84, bins_per_octave=12))
+        out[name] = C.astype(np.float32)
+    return out
+
+
+def resolve_bleed(notes_by_stem: dict, sal: dict, families: dict, dup_ratio: float = 0.55, lone_ratio: float = 0.12):
+    """A note that one stem's model heard but that sounds louder in another stem is that instrument
+    leaking through the separation. When the other stem has the same note too, the quieter copy is
+    removed; a note only this stem has is removed only when it is almost silent here (it would
+    otherwise be lost). Real doublings (guitar and piano on the same chord) are about as loud in
+    both stems, so both stay."""
+    import bisect
+
+    starts = {nm: sorted((n["s"], n["p"]) for n in ns) for nm, ns in notes_by_stem.items()}
+
+    def has(nm, n):
+        lst = starts.get(nm, [])
+        i = bisect.bisect_left(lst, (n["s"] - 0.08, -1))
+        while i < len(lst) and lst[i][0] <= n["s"] + 0.08:
+            if lst[i][1] == n["p"]:
+                return True
+            i += 1
+        return False
+
+    removed = {}
+    for name, notes in notes_by_stem.items():
+        if families.get(name) not in PITCHED or name not in sal:
+            continue
+        # bass and guitar often double a riff in unison, and the bass stem is always louder down
+        # there: comparing against the bass would delete real guitar notes, so it is left out
+        others = [o for o in sal if o != name and families.get(o) != "bass" and families.get(name) != "bass"]
+        if not others:
+            continue
+        keep = []
+        for n in notes:
+            k = n["p"] - 24
+            if not 0 <= k < 84:
+                keep.append(n)
+                continue
+            f0, f1 = int(n["s"] * 100), max(int(n["s"] * 100) + 2, int(min(n["e"], n["s"] + 0.3) * 100))
+            mine = float(sal[name][k, f0:f1].mean()) if f1 <= sal[name].shape[1] else 0.0
+            loud = max(others, key=lambda o: float(sal[o][k, f0:f1].mean()) if f1 <= sal[o].shape[1] else 0.0)
+            theirs = float(sal[loud][k, f0:f1].mean()) if f1 <= sal[loud].shape[1] else 0.0
+            if theirs > 0 and mine < (dup_ratio if has(loud, n) else lone_ratio) * theirs:
+                removed[name] = removed.get(name, 0) + 1
+                continue
+            keep.append(n)
+        notes_by_stem[name] = keep
+    return removed
+
+
+CHORD_TEMPLATES = {
+    # quality: (intervals, symbol suffix, prior: simpler chords are more likely)
+    "maj": ((0, 4, 7), "", 1.0), "min": ((0, 3, 7), "m", 1.0), "5": ((0, 7), "5", 0.82),
+    "7": ((0, 4, 7, 10), "7", 0.86), "maj7": ((0, 4, 7, 11), "maj7", 0.82), "m7": ((0, 3, 7, 10), "m7", 0.86),
+    "sus4": ((0, 5, 7), "sus4", 0.74), "sus2": ((0, 2, 7), "sus2", 0.72), "dim": ((0, 3, 6), "dim", 0.72),
+}
+NOTE_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+
+
+def estimate_key(all_notes):
+    """Krumhansl-Schmuckler key from every pitched note, weighted by length."""
+    import numpy as np
+
+    maj = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+    mnr = np.array([6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+    h = np.zeros(12)
+    for n in all_notes:
+        h[n["p"] % 12] += min(2.0, n["e"] - n["s"])
+    if h.sum() == 0:
+        return None
+    best = max(((np.corrcoef(h, np.roll(t, k))[0, 1], k, m) for k in range(12) for t, m in ((maj, "major"), (mnr, "minor"))), key=lambda x: x[0])
+    r, tonic, mode = best
+    rel = tonic if mode == "major" else (tonic + 3) % 12
+    fifths = {0: 0, 7: 1, 2: 2, 9: 3, 4: 4, 11: 5, 6: 6, 5: -1, 10: -2, 3: -3, 8: -4, 1: -5}[rel]
+    return {"tonic": tonic, "mode": mode, "name": f"{NOTE_NAMES[tonic]} {mode}", "fifths": fifths, "confidence": round(float(r), 3)}
+
+
+def key_from_chords(chords, fallback=None):
+    """The key whose chords explain the song best: every chord that belongs to the key counts for
+    its length, the tonic chord counts again, and songs usually start and end on it."""
+    if not chords:
+        return fallback
+    best = None
+    for tonic in range(12):
+        for mode, scale, quals in (("major", (0, 2, 4, 5, 7, 9, 11), ("maj", "min", "min", "maj", "maj", "min", "dim")),
+                                   ("minor", (0, 2, 3, 5, 7, 8, 10), ("min", "dim", "maj", "min", "min", "maj", "maj"))):
+            diatonic = {((tonic + d) % 12, q) for d, q in zip(scale, quals)}
+            if mode == "minor":
+                diatonic.add(((tonic + 7) % 12, "maj"))  # harmonic minor V
+            score = 0.0
+            for i, c in enumerate(chords):
+                dur = c["be"] - c["b"]
+                q = {"7": "maj", "maj7": "maj", "5": None, "m7": "min", "sus4": None, "sus2": None}.get(c["quality"], c["quality"])
+                fits = (c["root"], q) in diatonic if q else any(r == c["root"] for r, _ in diatonic)
+                score += dur if fits else -dur
+                if c["root"] == tonic and q in (None, "maj" if mode == "major" else "min"):
+                    score += 0.6 * dur + (1.5 if i in (0, len(chords) - 1) else 0)
+            if best is None or score > best[0]:
+                best = (score, tonic, mode)
+    _, tonic, mode = best
+    rel = tonic if mode == "major" else (tonic + 3) % 12
+    fifths = {0: 0, 7: 1, 2: 2, 9: 3, 4: 4, 11: 5, 6: 6, 5: -1, 10: -2, 3: -3, 8: -4, 1: -5}[rel]
+    return {"tonic": tonic, "mode": mode, "name": f"{NOTE_NAMES[tonic]} {mode}", "fifths": fifths, "confidence": fallback["confidence"] if fallback else 0.5}
+
+
+def estimate_chords(notes_by_stem: dict, families: dict, times, meter: int, key=None):
+    """Chord symbols, one decision per beat, smoothed with a Viterbi pass so chords change at bar
+    lines and half bars rather than on every passing note. The bass note weighs most for the root."""
+    import numpy as np
+
+    nb = len(times) - 1
+    if nb < 2:
+        return []
+    chroma = np.zeros((nb, 12))
+    bassc = np.zeros((nb, 12))
+    for name, notes in notes_by_stem.items():
+        fam = families.get(name)
+        if fam not in ("guitar", "bass", "piano", "other"):
+            continue
+        for n in notes:
+            b0, b1 = to_beats(n["s"], times), to_beats(n["e"], times)
+            for b in range(max(0, int(np.floor(b0))), min(nb, int(np.ceil(b1)))):
+                w = max(0.0, min(b1, b + 1) - max(b0, b)) * (n.get("v", 80) / 100)
+                if w <= 0:
+                    continue
+                chroma[b, n["p"] % 12] += w
+                if fam == "bass":
+                    bassc[b, n["p"] % 12] += w
+    # beats with nothing playing carry the previous chord
+    labels = []
+    for q, (iv, suf, prior) in CHORD_TEMPLATES.items():
+        for r in range(12):
+            t = np.zeros(12)
+            t[[(r + i) % 12 for i in iv]] = 1
+            labels.append((r, q, suf, prior, t))
+    kc = np.zeros(12)
+    if key:
+        scale = (0, 2, 4, 5, 7, 9, 11) if key["mode"] == "major" else (0, 2, 3, 5, 7, 8, 10)
+        kc[[(key["tonic"] + s) % 12 for s in scale]] = 1
+    L = len(labels)
+    obs = np.full((nb, L), -1.0)
+    for b in range(nb):
+        c = chroma[b]
+        if c.sum() < 1e-6:
+            obs[b] = 0
+            continue
+        cn = c / c.sum()
+        bn = bassc[b] / bassc[b].sum() if bassc[b].sum() > 0 else None
+        for j, (r, q, suf, prior, t) in enumerate(labels):
+            fit = cn @ t - 0.6 * cn @ (1 - t)  # chord tones heard minus other notes heard
+            fit -= 0.06 * (t.sum() - 3)  # bigger chords must earn their extra note
+            if bn is not None:
+                fit += 0.35 * bn[r]
+            if key is not None:
+                fit += 0.05 * (kc[r] - 0.5)
+            obs[b, j] = fit * prior
+    # Viterbi: staying costs nothing, changing costs more mid-bar than on a bar line
+    score = obs[0].copy()
+    back = np.zeros((nb, L), dtype=np.int32)
+    for b in range(1, nb):
+        pos = b % max(1, meter)
+        change = 0.08 if pos == 0 else (0.16 if meter % 2 == 0 and pos == meter // 2 else 0.3)
+        best_prev = int(np.argmax(score))
+        stay = score
+        move = score[best_prev] - change
+        back[b] = np.where(stay >= move, np.arange(L), best_prev)
+        score = np.maximum(stay, move) + obs[b]
+    path = [int(np.argmax(score))]
+    for b in range(nb - 1, 0, -1):
+        path.append(int(back[b, path[-1]]))
+    path.reverse()
+    out = []
+    for b, j in enumerate(path):
+        if chroma[b].sum() < 1e-6 and not out:
+            continue
+        r, q, suf, _, _ = labels[j]
+        if out and out[-1]["root"] == r and out[-1]["quality"] == q:
+            out[-1]["be"] = b + 1
+            out[-1]["e"] = float(times[b + 1])
+        else:
+            out.append({"b": b, "be": b + 1, "s": float(times[b]), "e": float(times[b + 1]), "root": r, "quality": q})
+    for c in out:
+        # an inversion only when the bass holds that note for most of the chord, not a passing fifth
+        bw = bassc[c["b"]:c["be"]].sum(0)
+        tones = [(c["root"] + i) % 12 for i in CHORD_TEMPLATES[c["quality"]][0]]
+        low = int(np.argmax(bw)) if bw.sum() > 0 else c["root"]
+        slash = low != c["root"] and low in tones and c["quality"] in ("maj", "min") and bw[low] > 0.6 * bw.sum()
+        c["name"] = NOTE_NAMES[c["root"]] + CHORD_TEMPLATES[c["quality"]][1] + (f"/{NOTE_NAMES[low]}" if slash else "")
+    return out
+
+
+def chord_cleanup(notes_by_stem: dict, families: dict, chords, times, sens: float):
+    """Weak, short notes that fit neither the chord being played nor the next one are most often
+    a model mistake (a ring-over, a harmonic, a neighbour's bleed); they go. Strong notes always
+    stay, so real passing notes and melody survive."""
+    removed = 0
+    if not chords:
+        return 0
+    starts = [c["b"] for c in chords]
+    import bisect
+
+    def tones(c):
+        return {(c["root"] + i) % 12 for i in CHORD_TEMPLATES[c["quality"]][0]}
+
+    for name, notes in notes_by_stem.items():
+        if families.get(name) not in ("guitar", "piano", "other") or len(notes) < 8:
+            continue
+        vel = sorted(n.get("v", 80) for n in notes)
+        weak = vel[int(len(vel) * (0.25 + 0.15 * (0.5 - sens)))]
+        keep = []
+        for n in notes:
+            b = to_beats(n["s"], times)
+            i = bisect.bisect_right(starts, b) - 1
+            ok = i < 0 or n["p"] % 12 in tones(chords[i]) or (i + 1 < len(chords) and n["p"] % 12 in tones(chords[i + 1]))
+            if not ok and n.get("v", 80) <= weak and n["e"] - n["s"] < 0.35:
+                removed += 1
+                continue
+            keep.append(n)
+        notes_by_stem[name] = keep
+    return removed
+
+
 def stem_notes(name: str, family: str, audio, path: str, a, sens: float, device: str, preset: dict):
     """Notes for one pitched stem, with the model that suits the instrument."""
     if family in ("bass", "vocals"):
@@ -824,8 +1262,19 @@ def stem_notes(name: str, family: str, audio, path: str, a, sens: float, device:
     else:
         notes = poly_basic_pitch(path, family, sens)
         method = "Basic Pitch"
-    if family not in ("bass", "vocals"):
-        notes = clean_poly(notes, family, sens, 6 if family == "guitar" else 10)
+    if family == "guitar":
+        # real guitar recordings have many soft, short notes (fingerpicking, ghost strums); the
+        # stricter blip and ghost limits removed them (real-song note F1 0.47 -> 0.63 with these)
+        notes = clean_poly(notes, family, sens, 6, ghost_margin=48 + 20 * (sens - 0.5), blip_len=max(0.025, 0.04 + 0.04 * (0.5 - sens)))
+    elif family not in ("bass", "vocals"):
+        notes = clean_poly(notes, family, sens, 10)
+    if family in ("guitar", "bass") and getattr(a, "techniques", 1):
+        try:
+            found = detect_techniques(notes, audio.mean(0), device)
+            if found:
+                log(f"{name}: {found} notes with bends, slides, vibrato or hammer-ons")
+        except Exception as e:  # noqa: BLE001
+            log("Technique detection skipped:", e)
     return notes, method
 
 
@@ -843,6 +1292,9 @@ def cmd_process(a) -> None:
     device = pick_device(a.device)
     if a.stems_dir:
         stems = load_stems_dir(a.stems_dir)
+    elif a.model in ROFORMER_MODELS:
+        stems = separate_roformer(mix, a.roformer_dir or os.path.join(os.path.dirname(os.path.abspath(__file__)), "models"), a.model, device, 0.03, 0.55,
+                                  overlap=4 if a.quality == "best" else 2)
     else:
         six = a.model == "htdemucs_6s"
         best_split = a.quality == "best" and six and (not a.sources or any(x in a.sources for x in ("vocals", "drums", "bass")))
@@ -948,12 +1400,26 @@ def cmd_process(a) -> None:
         if family == "vocals" and a.words:
             progress("Transcribing the singer’s words", base + 0.18 / n, "Whisper · local processing")
             try:
-                transcript = transcribe_words(audio, a.models_dir, a.language, a.words_model)
+                transcript = transcribe_words(audio, a.models_dir, a.language, a.words_model, device)
                 transcript["words"] = snap_words(transcript["words"], analysis["notes"].get(name, []))
             except Exception as error:  # noqa: BLE001
                 log("Word transcription failed:", error)
                 transcript = {"language": "", "words": [], "text": "", "error": str(error)}
             analysis.setdefault("lyrics", {})[name] = transcript
+
+    # ---- the parts, together: take out what one stem's model heard from another instrument
+    families = {name: family for (name, _f, family, _au, _x) in jobs}
+    pitched = [nm for nm in analysis["notes"] if families.get(nm) in PITCHED]
+    if a.bleed and len(pitched) >= 2:
+        progress("Comparing the parts", 0.965, "removing notes that belong to another instrument")
+        try:
+            sal = note_salience({nm: au for (nm, _f, fam, au, _x) in jobs if nm in pitched}, pitched)
+            removed = resolve_bleed(analysis["notes"], sal, families)
+            if removed:
+                log("Bleed removed:", removed)
+                analysis["bleed"] = removed
+        except Exception as e:  # noqa: BLE001
+            log("Bleed check skipped:", e)
 
     # ---- bar lines and beat positions for everything
     progress("Placing notes on the beat", 0.97)
@@ -964,6 +1430,24 @@ def cmd_process(a) -> None:
     grid = build_grid(beats, downs, down_logit, first, last) if len(beats) >= 4 else None
     if grid:
         times = grid["times"]
+        all_pitched = [n for nm, ns in analysis["notes"].items() if families.get(nm) in ("guitar", "bass", "piano", "other") for n in ns]
+        key = estimate_key(all_pitched) if all_pitched else None
+        if key:
+            analysis["key"] = key
+        if a.chords and all_pitched:
+            try:
+                chords = estimate_chords(analysis["notes"], families, times, grid["meter"], key)
+                if a.chord_clean:
+                    gone = chord_cleanup(analysis["notes"], families, chords, times, sens)
+                    if gone:
+                        log("Chord clean-up removed:", gone)
+                        chords = estimate_chords(analysis["notes"], families, times, grid["meter"], key)
+                analysis["chords"] = chords
+                key = key_from_chords(chords, key)
+                if key:
+                    analysis["key"] = key
+            except Exception as e:  # noqa: BLE001
+                log("Chord detection skipped:", e)
         onsets = []
         for notes in analysis["notes"].values():
             for nt in notes:
@@ -1037,6 +1521,9 @@ def main() -> None:
     words = sub.add_parser("prepare-words")
     words.add_argument("--models-dir", required=True)
     words.add_argument("--words-model", default="base")
+    rof = sub.add_parser("prepare-roformer")
+    rof.add_argument("--dir", required=True)
+    rof.add_argument("--model", default="bs_roformer_sw", choices=list(ROFORMER_MODELS))
     beats = sub.add_parser("prepare-beats")
     beats.add_argument("--dir", required=True)
     p = sub.add_parser("process")
@@ -1056,6 +1543,11 @@ def main() -> None:
     p.add_argument("--language", default=None)
     p.add_argument("--sources", nargs="+", choices=["vocals", "drums", "bass", "guitar", "piano", "other"])
     p.add_argument("--stems-dir", default=None, help="use pre-separated stems instead of running Demucs")
+    p.add_argument("--roformer-dir", default=None, help="folder for the BS-RoFormer separation weights")
+    p.add_argument("--bleed", type=int, default=1, help="remove notes that sound much louder in another stem")
+    p.add_argument("--chords", type=int, default=1, help="detect chord symbols and the key")
+    p.add_argument("--chord-clean", type=int, default=1, help="drop weak notes that fit no chord")
+    p.add_argument("--techniques", type=int, default=1, help="find bends, slides, vibrato and hammer-ons on single-note lines")
     a = ap.parse_args()
     try:
         if a.cmd == "status":
@@ -1064,6 +1556,8 @@ def main() -> None:
             import whisper
 
             whisper.load_model(a.words_model, device="cpu", download_root=a.models_dir)
+        elif a.cmd == "prepare-roformer":
+            cmd_prepare_roformer(a.dir, a.model)
         elif a.cmd == "prepare-beats":
             cmd_prepare_beats(a.dir)
         elif a.cmd == "prepare-model":

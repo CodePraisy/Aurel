@@ -1,12 +1,23 @@
 import type { NoteEvent, Part, Score } from '@shared/types'
 import { PPQ } from '@shared/types'
-import { durInfo, INSTRUMENTS, isFretted, measureTicks, spell, drumPiece, WHOLE } from './theory'
+import { durInfo, tripletBase, INSTRUMENTS, isFretted, measureTicks, spell, drumPiece, WHOLE } from './theory'
 import { measureCount } from './score'
 import { assignTab } from './tab'
 import type { RangeOpts } from './midi'
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const TYPE: Record<number, string> = { [WHOLE]: 'whole', [WHOLE / 2]: 'half', [PPQ]: 'quarter', [PPQ / 2]: 'eighth', [PPQ / 4]: '16th', [PPQ / 8]: '32nd' }
+
+const KIND: Record<string, string> = { '': 'major', m: 'minor', '5': 'power', '7': 'dominant', maj7: 'major-seventh', m7: 'minor-seventh', sus4: 'suspended-fourth', sus2: 'suspended-second', dim: 'diminished' }
+
+/** A chord symbol (C, F#m, Bb7, G/B …) as a MusicXML <harmony>. */
+export function harmonyXml(name: string, offset = 0): string {
+  const m = name.match(/^([A-G])([#b]?)(maj7|m7|sus4|sus2|dim|m|7|5)?(?:\/([A-G])([#b]?))?$/)
+  if (!m) return ''
+  const alter = (a: string) => (a === '#' ? '<root-alter>1</root-alter>' : a === 'b' ? '<root-alter>-1</root-alter>' : '')
+  const bass = m[4] ? `<bass><bass-step>${m[4]}</bass-step>${(m[5] === '#' ? '<bass-alter>1</bass-alter>' : m[5] === 'b' ? '<bass-alter>-1</bass-alter>' : '')}</bass>` : ''
+  return `<harmony><root><root-step>${m[1]}</root-step>${alter(m[2])}</root><kind text="${esc(m[3] ?? '')}">${KIND[m[3] ?? ''] ?? 'major'}</kind>${bass}${offset ? `<offset>${offset}</offset>` : ''}</harmony>`
+}
 
 function clefXml(p: Part): string {
   switch (p.clef) {
@@ -73,7 +84,9 @@ export function scoreToMusicXml(score: Score, o: RangeOpts = {}): string {
       const bpm = mi === from ? (score.tempoChanges ?? []).filter((c) => c.measure <= mi).pop()?.bpm ?? score.tempo : score.tempoChanges?.find((c) => c.measure === mi)?.bpm
       if (bpm && i === 0) lines.push(`<direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${bpm}</per-minute></metronome></direction-type><sound tempo="${bpm}"/></direction>`)
       const wholeRest = m.events.length === 1 && !!m.events[0].rest && m.events[0].dur === mt
+      const chords = i === 0 ? (score.chords ?? []).filter((c) => c.measure === mi) : []
       for (const e of m.events) {
+        for (const c of chords) if (c.tick >= e.start && c.tick < e.start + e.dur) lines.push(harmonyXml(c.name, c.tick - e.start))
         if (e.dynamic) lines.push(`<direction placement="below"><direction-type><dynamics><${e.dynamic}/></dynamics></direction-type></direction>`)
         if (e.tech?.includes('palmMute')) lines.push('<direction placement="above"><direction-type><words>P.M.</words></direction-type></direction>')
         const stops = pendingStops
@@ -89,8 +102,9 @@ export function scoreToMusicXml(score: Score, o: RangeOpts = {}): string {
 }
 
 function eventXml(p: Part, e: NoteEvent, wholeRest: boolean, tab: ({ string: number; fret: number } | null)[] | undefined, stops: string[], queueStop: (s: string) => void, pid: string, fifths: number): string[] {
-  const info = durInfo(e.dur) ?? { base: e.dur, dotted: false }
-  const type = wholeRest ? '' : `<type>${TYPE[info.base] ?? 'quarter'}</type>${info.dotted ? '<dot/>' : ''}`
+  const triplet = !durInfo(e.dur) ? tripletBase(e.dur) : null
+  const info = durInfo(e.dur) ?? { base: triplet ?? e.dur, dotted: false }
+  const type = wholeRest ? '' : `<type>${TYPE[info.base] ?? 'quarter'}</type>${info.dotted ? '<dot/>' : ''}${triplet ? '<time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>' : ''}`
   if (e.rest || !e.notes.length) return [`<note><rest${wholeRest ? ' measure="yes"' : ''}/><duration>${e.dur}</duration><voice>1</voice>${type}</note>`]
   const out: string[] = []
   const ordered = [...e.notes].sort((a, b) => a.pitch - b.pitch)
