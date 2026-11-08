@@ -369,6 +369,7 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
             note = sn
             if (info.base < PPQ) beamable.push(sn)
           }
+          if (part.color && /^#[0-9a-f]{6}$/i.test(part.color)) note.setStyle({ fillStyle: part.color, strokeStyle: part.color })
           notes.push(note)
           recorded.push({ row: sys.rows[ri], e, note })
           if (info.triplet) {
@@ -391,7 +392,10 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
           const groups = score.timeSig.den === 8 && score.timeSig.num % 3 === 0 ? [new Fraction(3, 8)] : score.timeSig.den === 8 ? [new Fraction(2, 8)] : [new Fraction(1, 4)]
           const stavenotes = notes.filter((n): n is StaveNote => n instanceof StaveNote)
           const beams = Beam.generateBeams(stavenotes, { groups, ...(part.kind === 'drums' ? { stem_direction: 1, maintain_stem_directions: false } : {}) })
-          drawLater.unshift(() => beams.forEach((b) => b.setContext(ctx).draw()))
+          drawLater.unshift(() => beams.forEach((b) => {
+            if (part.color && /^#[0-9a-f]{6}$/i.test(part.color)) b.setStyle({ fillStyle: part.color, strokeStyle: part.color })
+            b.setContext(ctx).draw()
+          }))
         }
         // close ties that cross into the next system
         if (k === mis.length - 1) {
@@ -415,6 +419,11 @@ export function renderScore(el: HTMLElement, score: Score, o: RenderOptions): Sc
       for (const r of recorded) {
         const nx = (r.note as StaveNote).getAbsoluteX?.() ?? startX
         const glyph = r.note.getSVGElement()
+        const color = parts.find((part) => part.id === r.row.partId)?.color
+        if (glyph && color && /^#[0-9a-f]{6}$/i.test(color)) {
+          glyph.classList.add('part-colored')
+          glyph.style.setProperty('--part-ink', color)
+        }
         r.row.events.push({ id: r.e.id, measure: mi, start: r.e.start, dur: r.e.dur, x: nx, rest: !!r.e.rest, glyph })
       }
       // chord symbols over the top row, at the note (or beat) they start on

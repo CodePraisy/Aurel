@@ -1,4 +1,5 @@
 import { detectedBpm } from '@shared/rhythm'
+import { existingSessions } from '@shared/sessions'
 import { create } from 'zustand'
 import type { Collection, EngineAnalysis, EngineStatus, JobUpdate, LibraryEntry, Project, Settings, TranscriptionSource, UpdateInfo } from '@shared/types'
 import { api } from '@/lib/api'
@@ -16,6 +17,7 @@ interface AppState {
   history: Route[]
   settings: Settings | null
   library: LibraryEntry[]
+  libraryLoaded: boolean
   collections: Collection[]
   engine: EngineStatus | null
   jobs: Record<string, JobInfo>
@@ -49,6 +51,7 @@ export const useApp = create<AppState>((set, get) => ({
   history: [],
   settings: null,
   library: [],
+  libraryLoaded: false,
   collections: [],
   engine: null,
   jobs: {},
@@ -63,11 +66,19 @@ export const useApp = create<AppState>((set, get) => ({
     history: s.history.slice(0, -1)
   })),
   setDialog: (dialog) => set({ dialog }),
-  loadSettings: async () => set({ settings: await api.settings.get() }),
+  loadSettings: async () => {
+    set({ settings: await api.settings.get() })
+    await reconcileSessions()
+  },
   updateSettings: async (p) => set({ settings: await api.settings.set(p) }),
   refreshLibrary: async () => {
     const [library, collections] = await Promise.all([api.library.list(), api.library.collections()])
-    set({ library, collections })
+    const ids = new Set(library.map((entry) => entry.id))
+    set((state) => ({ library, collections, libraryLoaded: true,
+      history: state.history.filter((route) => route.name !== 'studio' || ids.has(route.projectId)),
+      ...(state.route.name === 'studio' && !ids.has(state.route.projectId) ? { route: { name: 'home' as const } } : {})
+    }))
+    await reconcileSessions()
   },
   refreshEngine: async (force) => {
     const engine = await api.engine.status(force)
@@ -129,6 +140,15 @@ export function transcribeOptions(s: Settings | null | undefined): TranscribeOpt
     guitarChordLimit: s.guitarChordLimit ?? 6,
     chords: s.chordSymbols ?? true
   }
+}
+
+async function reconcileSessions(): Promise<void> {
+  const { settings, library, libraryLoaded, updateSettings } = useApp.getState()
+  if (!settings || !libraryLoaded) return
+  const sessions = existingSessions(settings.sessions ?? [], library)
+  if (sessions.length === (settings.sessions ?? []).length) return
+  useApp.setState({ settings: { ...settings, sessions } })
+  await updateSettings({ sessions })
 }
 
 /** Turn the engine's analysis into an editable score and save it. */

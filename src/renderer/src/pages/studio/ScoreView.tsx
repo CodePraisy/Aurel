@@ -81,7 +81,7 @@ export default function ScoreView({ project, loop, onEditArpeggio }: { project: 
   const notationKey = useMemo(() => {
     const sc = project.score
     return JSON.stringify([sc.title, sc.composer, sc.tempo, sc.timeSig, sc.keyFifths, sc.chords,
-      parts.map((p) => [p.id, p.name, p.kind, p.clef, p.group, p.tuning, p.capo, identity(p.measures)]),
+      parts.map((p) => [p.id, p.name, p.kind, p.clef, p.group, p.tuning, p.capo, p.color, identity(p.measures)]),
       project.score.parts.find((p) => p.kind === 'singer')?.lyrics, project.audio?.offset, project.audio?.tempoLinked, project.audio?.referenceTempo])
   }, [project.score, parts])
   useLayoutEffect(() => {

@@ -270,6 +270,7 @@ export function removeProject(id: string): void {
   run('DELETE FROM projects WHERE id = ?', [id])
   run('DELETE FROM collection_items WHERE project_id = ?', [id])
   fs.rmSync(paths.project(id), { recursive: true, force: true })
+  setSettings({ sessions: getSettings().sessions.filter((session) => session.projectId !== id) })
   flush()
 }
 

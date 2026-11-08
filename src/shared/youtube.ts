@@ -1,3 +1,11 @@
+export function youtubeSourceLink(...sources: (string | undefined | null)[]): string | null {
+  for (const source of sources) {
+    const id = source && parseYouTubeId(source)
+    if (id) return `https://www.youtube.com/watch?v=${id}`
+  }
+  return null
+}
+
 export function parseYouTubeId(input: string): string | null {
   let u: URL
   try { u = new URL(input.trim()) } catch { return null }

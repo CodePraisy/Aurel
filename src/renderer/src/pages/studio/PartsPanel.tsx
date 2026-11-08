@@ -12,6 +12,7 @@ import { uid } from '@/music/score'
 import { ADDABLE } from '../Dialogs'
 import VstPicker from './VstPicker'
 import TuningEditor from './TuningEditor'
+import InstrumentColor from './InstrumentColor'
 import { api } from '@/lib/api'
 
 /** Each instrument family has its own colour (a hue), used for its icon tile and track stripe. */
@@ -62,12 +63,14 @@ export default function PartsPanel({ project }: { project: Project }) {
   const view = project.view?.part ?? 'all'
   const [renaming, setRenaming] = useState<string | null>(null)
   const [tuningPart, setTuningPart] = useState<string | null>(null)
+  const [colorPart, setColorPart] = useState<string | null>(null)
   const vstPresets = useApp((state) => state.settings?.vstInstruments) ?? []
   const [addingVst, setAddingVst] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null)
   const parts = project.score.parts
   const tuningTarget = parts.find((part) => part.id === tuningPart)
+  const colorTarget = parts.find((part) => part.id === colorPart)
   const editVst = async (part: Part) => {
     const plugin = part.vstInstrument
     if (!plugin) return
@@ -116,6 +119,7 @@ export default function PartsPanel({ project }: { project: Project }) {
     ...(p.vstInstrument ? [{ label: 'Open plug-in editor…', onClick: () => void editVst(p) }] : []),
     ...(isFretted(p.kind) ? [{ label: 'Custom tuning…', onClick: () => setTuningPart(p.id) }] : []),
     { label: 'Rename', icon: <Pencil size={14} />, onClick: () => setRenaming(p.id) },
+    { label: 'Instrument color…', onClick: () => setColorPart(p.id) },
     { label: 'Sound & effects…', icon: <SlidersHorizontal size={14} />, onClick: () => useProject.setState({ rackPart: p.id }) },
     { label: 'Instrument type', icon: familyIcon(p.kind, 14), submenu: ADDABLE.map((k) => ({ label: INSTRUMENTS[k].label, checked: k === p.kind, onClick: () => { const def = INSTRUMENTS[k]; st.updatePart(p.id, { kind: k, sound: undefined, clef: p.group ? p.clef : def.clef, tuning: def.tuning ? [...def.tuning] : undefined }) } })) },
     { label: p.mute ? 'Unmute' : 'Mute', onClick: () => st.updatePart(p.id, { mute: !p.mute }) },
@@ -214,7 +218,8 @@ export default function PartsPanel({ project }: { project: Project }) {
                     e.dataTransfer.effectAllowed = 'move'
                     setDragging(p.id)
                   }} onDragEnd={() => { setDragging(null); setDropTarget(null) }}><GripVertical size={14} /></span>
-                <button className="part-icon shrink-0" aria-label={`Show ${p.name}`} title={`Show ${p.name}`} onClick={() => selectPart(p)}>{familyIcon(p.kind)}</button>
+                <button className="part-icon shrink-0" style={{ color: p.color }} aria-label={`Show ${p.name}`} title={`Show ${p.name}`} onClick={() => selectPart(p)}>{familyIcon(p.kind)}</button>
+                <button className="h-2.5 w-2.5 rounded-full shrink-0 border border-fg/20" style={{ backgroundColor: p.color ?? 'rgb(var(--accent))' }} title={`Change color for ${p.name}`} aria-label={`Change color for ${p.name}`} onClick={() => setColorPart(p.id)} />
                 <div className="flex-1 min-w-0" onClick={() => selectPart(p)}>
                   {renaming === p.id ? (
                     <input autoFocus className="field !h-6 !px-1.5 !text-[12.5px]" defaultValue={p.name} onBlur={(e) => { st.updatePart(p.id, { name: e.target.value.trim() || p.name }); setRenaming(null) }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(null) }} />
@@ -230,7 +235,7 @@ export default function PartsPanel({ project }: { project: Project }) {
                 </div>
                 <button className={cx('icon-btn !h-6 !w-6 text-[11px] font-bold', p.mute && 'on !text-bad !bg-bad/10')} title="Mute" onClick={() => st.updatePart(p.id, { mute: !p.mute })}>M</button>
                 <button className={cx('icon-btn !h-6 !w-6 text-[11px] font-bold', p.solo && 'on')} aria-pressed={p.solo} title={p.solo ? 'Unsolo' : 'Solo'} onClick={() => toggleSolo(p)}>S</button>
-                <PartMenu part={p} onRename={() => setRenaming(p.id)} compare={opts.compare === p.id} onEditVst={() => void editVst(p)} onCustomTuning={() => setTuningPart(p.id)} />
+                <PartMenu part={p} onRename={() => setRenaming(p.id)} onColor={() => setColorPart(p.id)} compare={opts.compare === p.id} onEditVst={() => void editVst(p)} onCustomTuning={() => setTuningPart(p.id)} />
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <Slider value={p.volume} min={0} max={1} onChange={(v) => st.updatePart(p.id, { volume: v })} title="Volume" />
@@ -240,6 +245,10 @@ export default function PartsPanel({ project }: { project: Project }) {
         })}
         {parts.length === 0 && <p className="text-faint text-[12px] px-2.5 py-2 leading-relaxed">No notation parts yet. Transcribe with AI or add an instrument to write your own part along with the recording.</p>}
       </div>
+      {colorTarget && <InstrumentColor key={colorTarget.id} part={colorTarget} onClose={() => setColorPart(null)} onApply={(color) => {
+        st.edit((score) => { for (const part of score.parts) if (part.id === colorTarget.id || (colorTarget.group && part.group === colorTarget.group)) part.color = color })
+        setColorPart(null)
+      }} />}
       {tuningTarget && <TuningEditor key={tuningTarget.id} part={tuningTarget} onClose={() => setTuningPart(null)} onApply={(tuning) => {
         st.edit((score) => { const part = score.parts.find((candidate) => candidate.id === tuningTarget.id); if (part) part.tuning = tuning })
         setTuningPart(null)
@@ -254,7 +263,7 @@ export default function PartsPanel({ project }: { project: Project }) {
   )
 }
 
-function PartMenu({ part, onRename, compare, onEditVst, onCustomTuning }: { part: Part; onRename: () => void; compare: boolean; onEditVst: () => void; onCustomTuning: () => void }) {
+function PartMenu({ part, onRename, onColor, compare, onEditVst, onCustomTuning }: { part: Part; onRename: () => void; onColor: () => void; compare: boolean; onEditVst: () => void; onCustomTuning: () => void }) {
   const st = useProject()
   const [sub, setSub] = useState<null | 'kind' | 'sound' | 'tuning' | 'pan'>(null)
   const vstPresets = useApp((state) => state.settings?.vstInstruments) ?? []
@@ -295,6 +304,7 @@ function PartMenu({ part, onRename, compare, onEditVst, onCustomTuning }: { part
           <>
             {part.vstInstrument && <MenuItem onClick={() => { close(); onEditVst() }}>Open plug-in editor…</MenuItem>}
             <MenuItem icon={<Pencil size={14} />} onClick={() => { onRename(); close() }}>Rename</MenuItem>
+            <MenuItem onClick={() => { onColor(); close() }}>Instrument color…</MenuItem>
             <MenuItem icon={familyIcon(part.kind, 14)} onClick={() => setSub('kind')} hint={INSTRUMENTS[part.kind].label}>Instrument type</MenuItem>
             <MenuItem icon={<SlidersHorizontal size={14} />} onClick={() => { useProject.setState({ rackPart: part.id }); close() }}>Sound & effects…</MenuItem>
             <MenuItem icon={<Music size={14} />} onClick={() => setSub('sound')}>Quick sound change</MenuItem>

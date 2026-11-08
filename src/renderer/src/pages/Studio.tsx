@@ -8,6 +8,8 @@ import VocalWords from './studio/VocalWords'
 import { useProject } from '@/store/project'
 import { player } from '@/audio/player'
 import { api } from '@/lib/api'
+import { copyLink } from '@/lib/clipboard'
+import { youtubeSourceLink } from '@shared/youtube'
 import { openContextMenu, Select } from '@/components/menu'
 import { Artwork, cx, Modal, Progress, Popover, fmtTime } from '@/components/ui'
 import { KEY_NAMES, measureTicks, INSTRUMENTS } from '@/music/theory'
@@ -126,6 +128,12 @@ export default function Studio({ projectId }: { projectId: string }) {
   const installJob = pendingProcess.has(p.id) ? Object.values(jobs).find((j) => j.kind === 'install' && !j.done) : undefined
   const status = p.analysis?.status ?? 'none'
   const entry = library.find((l) => l.id === p.id)
+  const sourceLink = youtubeSourceLink(p.audio?.sourceUrl, p.audio?.youtube?.url, entry?.source,
+    p.audio?.youtube?.id ? `https://www.youtube.com/watch?v=${p.audio.youtube.id}` : undefined)
+  const sourceMenu = sourceLink ? [
+    { label: 'Copy original video link', onClick: () => void copyLink(sourceLink) },
+    { label: 'Open original video', onClick: () => void api.shell.openExternal(sourceLink) }
+  ] : []
   const mode = p.view?.mode ?? 'both'
   const zoom = p.view?.zoom ?? 1
   const loop = player.opts.loopOn ? player.opts.loop : null
@@ -188,13 +196,22 @@ export default function Studio({ projectId }: { projectId: string }) {
           <Artwork id={p.id} artwork={entry?.artwork ?? null} title={s.title} size={30} className="studio-art" />
         </button>
         <Popover width={330} trigger={(t) => (
-          <button className="no-drag text-left min-w-0 max-w-[340px] px-1.5 py-0.5 rounded-md hover:bg-fg/[0.05]" onClick={t}>
+          <button className="no-drag text-left min-w-0 max-w-[340px] px-1.5 py-0.5 rounded-md hover:bg-fg/[0.05]" onClick={t}
+            onContextMenu={sourceLink ? (event) => openContextMenu(event, sourceMenu) : undefined}>
             <div className="font-display text-[15.5px] truncate leading-tight">{s.title}</div>
             <div className="text-[11.5px] text-muted truncate leading-tight flex items-center gap-1.5">{s.composer || (p.kind === 'composition' ? 'Original composition' : 'Unknown artist')} <span className="meta-dot" /> <span className="tabular-nums" onContextMenu={editOnRightClick('tempo')}>{s.tempo} BPM</span> <span className="meta-dot" /> {KEY_NAMES[s.keyFifths + 7]} <span className="meta-dot" /> <span onContextMenu={editOnRightClick('meter')}>{s.timeSig.num}/{s.timeSig.den}</span></div>
           </button>
         )}>
           {(closeDetails) => (
             <div className="p-2 space-y-2.5 no-drag">
+              {sourceLink && <div onContextMenu={(event) => openContextMenu(event, sourceMenu)}>
+                <div className="label mb-1">Original YouTube video</div>
+                <input className="field !h-8 !text-[11px]" aria-label="Original YouTube video link" readOnly value={sourceLink} onFocus={(event) => event.currentTarget.select()} />
+                <div className="flex gap-2 mt-1.5">
+                  <button className="btn-soft !h-7 flex-1" onClick={() => void copyLink(sourceLink)}>Copy link</button>
+                  <button className="btn-ghost !h-7 flex-1" onClick={() => void api.shell.openExternal(sourceLink)}>Open video</button>
+                </div>
+              </div>}
               <label className="block"><div className="label mb-1">Title</div><input className="field !h-8" value={s.title} onChange={(e) => setMetadata({ title: e.target.value })} onBlur={() => { if (!s.title.trim()) setMetadata({ title: 'Untitled' }); void useProject.getState().save().then(refreshLibrary).catch(() => undefined) }} /></label>
               <label className="block"><div className="label mb-1">{p.kind === 'composition' ? 'Composer' : 'Artist'}</div><input className="field !h-8" value={s.composer} onChange={(e) => setMetadata({ composer: e.target.value })} onBlur={() => void useProject.getState().save().then(refreshLibrary).catch(() => undefined)} /></label>
               <div className="grid grid-cols-3 gap-2">

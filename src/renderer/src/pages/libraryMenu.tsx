@@ -5,14 +5,21 @@ import { useApp } from '@/store/app'
 import { api } from '@/lib/api'
 import { midiToScore } from '@/music/midi'
 import { newProject, uid } from '@/music/score'
+import { youtubeSourceLink } from '@shared/youtube'
+import { copyLink } from '@/lib/clipboard'
 
 export interface LibraryActions { rename(e: LibraryEntry): void; remove(e: LibraryEntry): void; newCollection(forId?: string): void }
 
 export function itemMenu(e: LibraryEntry, a: LibraryActions): MenuEntry[] {
   const st = useApp.getState()
   const refresh = () => void st.refreshLibrary()
+  const sourceLink = youtubeSourceLink(e.source)
   return [
     { label: 'Open', icon: <Play size={14} />, onClick: () => st.go({ name: 'studio', projectId: e.id }) },
+    ...(sourceLink ? [
+      { label: 'Copy original video link', icon: <Copy size={14} />, onClick: () => void copyLink(sourceLink) },
+      { label: 'Open original video', icon: <Youtube size={14} />, onClick: () => void api.shell.openExternal(sourceLink) }
+    ] : []),
     { label: 'Change cover photo…', onClick: () => void st.changeCover(e.id) },
     { label: 'Rename…', icon: <Pencil size={14} />, onClick: () => a.rename(e) },
     { label: e.favorite ? 'Remove from favorites' : 'Add to favorites', icon: <Star size={14} />, onClick: async () => { await api.library.setFavorite(e.id, !e.favorite); refresh() } },

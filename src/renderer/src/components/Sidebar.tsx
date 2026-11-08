@@ -1,6 +1,7 @@
 import { useState, type DragEvent, type ReactNode } from 'react'
 import { Home as HomeIcon, Library as LibraryIcon, Settings as SettingsIcon, RefreshCw, ChevronRight, FolderPlus, Folder, FolderOpen, X, PanelLeftClose, PanelLeftOpen, Pencil, Trash2, AudioLines, PenLine, FolderInput, Plus } from 'lucide-react'
 import type { LibraryEntry, SessionFolder, SessionTab } from '@shared/types'
+import { existingSessions } from '@shared/sessions'
 import { useApp } from '@/store/app'
 import { addFolder, closeOtherSessions, closeSession, moveFolder, moveSession, removeFolder, renameFolder, toggleFolder } from '@/store/sessions'
 import { openContextMenu, type MenuEntry } from './menu'
@@ -37,7 +38,7 @@ export default function Sidebar({ version, checking, onCheckUpdates }: { version
   const open = settings?.sidebarOpen ?? true
   const byId = new Map(library.map((e) => [e.id, e]))
   // a session whose piece was deleted is not shown
-  const sessions = (settings?.sessions ?? []).filter((s) => !library.length || byId.has(s.projectId))
+  const sessions = existingSessions(settings?.sessions ?? [], library)
   const folders = settings?.sessionFolders ?? []
   const active = route.name === 'studio' ? route.projectId : null
 

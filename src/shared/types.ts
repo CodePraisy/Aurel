@@ -55,6 +55,7 @@ export interface VocalWord { start: number; end: number; text: string; b?: numbe
 export interface VocalTranscript { error?: string; language: string; words: VocalWord[]; text: string }
 
 export interface Part {
+  color?: string // custom hex color; absent follows the current theme
   lyrics?: VocalTranscript
   id: string
   name: string

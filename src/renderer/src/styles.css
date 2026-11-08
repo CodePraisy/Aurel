@@ -95,6 +95,7 @@ input[type='range'].slider:hover::-webkit-slider-thumb { transform: scale(1.15);
 
 .score-sheet svg { overflow: visible; }
 .score-sheet svg text { fill: rgb(var(--ink)); }
+.score-sheet .part-colored text { fill: var(--part-ink); }
 .score-sheet .selected-note .vf-notehead path,
 .score-sheet .selected-note.vf-tabnote text {
   fill: rgb(var(--accent2));
