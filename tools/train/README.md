@@ -15,7 +15,7 @@ guitar ([Riley et al. 2024](https://arxiv.org/abs/2402.15258)).
 
 ## 1. Install (once)
 
-Use the Python that Aurel installed (`%APPDATA%\Aurel\engine\venv\Scripts\python.exe`) or any
+Easiest: double-click `tools\train\train-guitar.bat`; it does steps 1–3 for you. By hand: use the Python that Aurel installed (`%APPDATA%\Aurel\engine-venv\Scripts\python.exe`) or any
 Python 3.10 with the engine's packages, plus:
 
 ```bat
